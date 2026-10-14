@@ -4,6 +4,7 @@ import { NearestFeasibleStrategy, type DispatchStrategy } from "../../../package
 import { EventBus, MockPaymentProvider, MockSmsProvider, type PaymentProvider, type SmsProvider } from "./adapters.ts";
 import { config } from "./config.ts";
 import { RateLimiter } from "./security/http.ts";
+import { Metrics } from "./observability/metrics.ts";
 
 export interface AppContext {
   db: Db;
@@ -15,6 +16,7 @@ export interface AppContext {
   now: () => Date;
   /** null disables rate limiting (RATE_LIMIT=0). */
   limiter: RateLimiter | null;
+  metrics: Metrics;
 }
 
 export function createAppContext(db: Db, overrides: Partial<AppContext> = {}): AppContext {
@@ -27,6 +29,7 @@ export function createAppContext(db: Db, overrides: Partial<AppContext> = {}): A
     dispatch: new NearestFeasibleStrategy(),
     now: () => new Date(),
     limiter: config.rateLimit ? new RateLimiter() : null,
+    metrics: new Metrics(),
     ...overrides,
   };
 }

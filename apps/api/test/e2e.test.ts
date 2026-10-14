@@ -235,7 +235,11 @@ test("settlements: weekly statement pays undisputed balance, withholds only the 
   assert.equal(Number(st.net_payable), 5000);
   assert.equal(Number(st.withheld_disputed) > 0, true);
   assert.equal((await finance.post(`/api/v1/admin/settlements/${st.id}/approve`)).status, 200);
-  assert.equal((await finance.post(`/api/v1/admin/settlements/${st.id}/paid`, { payoutRef: "DEMO-SARIE-0001" })).status, 200);
+  // Four-eyes: the approver cannot record the payout; a second finance-permitted user does.
+  const self = await finance.post(`/api/v1/admin/settlements/${st.id}/paid`, { payoutRef: "DEMO-SARIE-0001" });
+  assert.equal(self.status, 403);
+  assert.equal(self.body.error.code, "four_eyes_required");
+  assert.equal((await ops.post(`/api/v1/admin/settlements/${st.id}/paid`, { payoutRef: "DEMO-SARIE-0001" })).status, 200);
   const tb = (await finance.get("/api/v1/admin/ledger/trial-balance")).body.accounts;
   assert.equal(Number(tb.find((a: any) => a.code === `liability:merchant_payable:${ctx.rid}`).balance), 0);
   assert.equal((await finance.get("/api/v1/admin/reconciliation")).body.trialBalanced, true);

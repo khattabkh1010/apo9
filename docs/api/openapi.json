@@ -96,6 +96,30 @@
         }
       }
     },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Platform"
+        ],
+        "operationId": "GET_metrics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/otp/request": {
       "post": {
         "tags": [

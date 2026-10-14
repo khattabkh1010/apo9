@@ -65,6 +65,8 @@ export class Router {
   routes: Route[] = [];
   authenticate: ((req: IncomingMessage) => Promise<Principal | null>) | null = null;
   limiter: RateLimiter | null = null;
+  /** Called once per handled request with the route PATTERN (bounded cardinality). */
+  onRequest: ((method: string, route: string, status: number, seconds: number) => void) | null = null;
   trustProxy = false;
   secureCookies = false;
 
@@ -172,7 +174,9 @@ export class Router {
       if (status === 429 && err.details && typeof err.details === "object" && "retryAfterSec" in err.details) res.setHeader("retry-after", String((err.details as { retryAfterSec: number }).retryAfterSec));
       send(res, status, { error: { code: err.code, message: err.message, details: err.details, requestId } });
     } finally {
-      log.info("request", { requestId, method: req.method, path: found.route.path, status, ms: Math.round(performance.now() - started), user: ctx.principal?.userId });
+      const ms = performance.now() - started;
+      this.onRequest?.(req.method ?? "GET", found.route.path, status, ms / 1000);
+      log.info("request", { requestId, method: req.method, path: found.route.path, status, ms: Math.round(ms), user: ctx.principal?.userId });
     }
     return true;
   }

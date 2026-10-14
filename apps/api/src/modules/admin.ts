@@ -345,9 +345,9 @@ export function adminRoutes(r: Router, app: AppContext) {
     return { ok: true };
   });
   r.post("/api/v1/admin/settlements/:id/paid", async (ctx) => {
-    requirePermission(ctx, "finance.settlements");
+    const p = requirePermission(ctx, "finance.settlements");
     const { payoutRef } = await ctx.body(z.object({ payoutRef: z.string().min(3).max(100) }));
-    await markSettlementPaid(app, ctx.params.id!, payoutRef);
+    await markSettlementPaid(app, ctx.params.id!, payoutRef, p.userId);
     await audit(app.db, ctx, { action: "settlement.paid", entityType: "settlement", entityId: ctx.params.id!, after: { payoutRef } });
     return { ok: true };
   });

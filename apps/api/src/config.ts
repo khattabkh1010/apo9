@@ -36,6 +36,8 @@ export const config = {
   otpMaxPerHour: isProd ? 5 : Number(env.OTP_MAX_PER_HOUR ?? 5),
   /** Cookies get the Secure flag in production (HTTPS only). */
   secureCookies: isProd || env.SECURE_COOKIES === "1",
+  /** Bearer token for GET /metrics. Required in production (otherwise the endpoint is disabled). */
+  metricsToken: env.METRICS_TOKEN ?? null,
   jobsEnabled: env.JOBS_ENABLED !== "0",
   /** Demo courier movement simulator (development only). */
   simulateCouriers: !isProd && env.SIMULATE_COURIERS === "1",

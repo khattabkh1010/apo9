@@ -1,7 +1,7 @@
 import { buildStatement, monthlyPeriodContaining, weeklyPeriodContaining, type Period, type SettlementLineInput } from "../../../../packages/domain/src/settlements.ts";
 import { postPayout } from "../../../../packages/domain/src/ledger.ts";
 import type { AppContext } from "../context.ts";
-import { conflict, notFound } from "../http/router.ts";
+import { ApiError, conflict, notFound } from "../http/router.ts";
 import { postEntry } from "./common.ts";
 import { postClaimRecovery } from "./support.ts";
 
@@ -89,13 +89,15 @@ export async function approveSettlement(app: AppContext, id: string, actorId: st
  * Mark paid after the bank transfer is executed. Bank payout integration (e.g. SARIE via the
  * company bank's API) is NOT implemented — finance executes the transfer and records the reference.
  */
-export async function markSettlementPaid(app: AppContext, id: string, payoutRef: string): Promise<void> {
+export async function markSettlementPaid(app: AppContext, id: string, payoutRef: string, actorId: string): Promise<void> {
   await app.db.tx(async (q) => {
-    const s = (await q.query<{ status: string; party_type: "restaurant" | "logistics"; party_id: string; net_payable: number }>("select * from settlements where id = $1 for update", [id])).rows[0];
+    const s = (await q.query<{ status: string; party_type: "restaurant" | "logistics"; party_id: string; net_payable: number; approved_by: string | null }>("select * from settlements where id = $1 for update", [id])).rows[0];
     if (!s) throw notFound("settlement");
     if (s.status !== "approved") throw conflict("not_approved");
+    // Four-eyes: approving a statement and releasing the money are done by different people.
+    if (s.approved_by === actorId) throw new ApiError(403, "four_eyes_required", "من اعتمد الكشف لا يسجّل الدفع");
     if (s.net_payable > 0) await postEntry(q, postPayout({ payoutId: id, party: { kind: s.party_type, id: s.party_id }, amount: s.net_payable, occurredAt: app.now() }));
-    await q.query("update settlements set status = 'paid', paid_at = now(), payout_ref = $2 where id = $1", [id, payoutRef]);
+    await q.query("update settlements set status = 'paid', paid_at = now(), payout_ref = $2, paid_by = $3 where id = $1", [id, payoutRef, actorId]);
   });
 }
 

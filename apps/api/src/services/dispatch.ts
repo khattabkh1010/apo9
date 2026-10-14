@@ -91,7 +91,10 @@ export async function dispatchJob(app: AppContext, jobId: string): Promise<Dispa
   }));
 
   const batching = await getSetting<BatchingConfig>(app.db, "batching", DEFAULT_BATCHING);
+  const t0 = performance.now();
   const decision = await app.dispatch.decide(djob, candidates, { now, routing: app.routing, batching });
+  app.metrics.inc("abu9_dispatch_decisions_total", { strategy: decision.strategy, outcome: decision.assignment ? decision.assignment.mode : "unassigned" });
+  app.metrics.inc("abu9_dispatch_decide_ms_total", {}, Math.round(performance.now() - t0));
 
   await app.db.tx(async (q) => {
     await q.query("insert into dispatch_decisions(job_id, strategy, decision) values ($1,$2,$3)", [jobId, decision.strategy, decision]);

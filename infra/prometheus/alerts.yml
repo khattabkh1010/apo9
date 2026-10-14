@@ -1,0 +1,55 @@
+# Prometheus alerting rules for ABU9 (scrape GET /metrics with Authorization: Bearer $METRICS_TOKEN).
+# Thresholds are starting points for the Riyadh pilot; tune after the first weeks of real traffic.
+groups:
+  - name: abu9-operations
+    rules:
+      - alert: DispatchBacklog
+        expr: abu9_dispatch_oldest_unassigned_seconds > 300
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "A delivery has waited >5 min for a courier"
+          runbook: "docs/RUNBOOKS.md#dispatch-backlog"
+      - alert: NoCouriersOnlineWithActiveOrders
+        expr: abu9_couriers_online == 0 and abu9_orders_active > 0
+        for: 3m
+        labels: { severity: page }
+        annotations:
+          summary: "Active orders but no couriers online"
+          runbook: "docs/RUNBOOKS.md#no-couriers"
+      - alert: RestaurantAcceptanceBacklog
+        expr: abu9_orders_awaiting_restaurant > 10
+        for: 3m
+        labels: { severity: warn }
+        annotations:
+          summary: "Many orders waiting for restaurant acceptance (240 s auto-reject window)"
+          runbook: "docs/RUNBOOKS.md#acceptance-backlog"
+      - alert: HighRejectionRate
+        expr: abu9_orders_rejected_1h > 15
+        labels: { severity: warn }
+        annotations:
+          summary: "Unusually many rejected orders in the last hour"
+          runbook: "docs/RUNBOOKS.md#rejections"
+  - name: abu9-api
+    rules:
+      - alert: ApiErrorRate
+        expr: sum(rate(abu9_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(abu9_http_requests_total[5m])), 1) > 0.02
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "More than 2% of API requests are failing"
+          runbook: "docs/RUNBOOKS.md#api-errors"
+      - alert: CheckoutLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(abu9_http_request_duration_seconds_bucket{route=~"/api/v1/orders|/api/v1/checkout/quote"}[5m]))) > 1
+        for: 10m
+        labels: { severity: warn }
+        annotations:
+          summary: "p95 checkout latency above 1 s"
+          runbook: "docs/RUNBOOKS.md#api-errors"
+      - alert: ApiDown
+        expr: up{job="abu9-api"} == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "ABU9 API is not being scraped"
+          runbook: "docs/RUNBOOKS.md#api-down"

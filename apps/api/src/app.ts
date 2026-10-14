@@ -19,6 +19,9 @@ import { onboardingRoutes } from "./modules/onboarding.ts";
 import { campaignRoutes } from "./modules/campaigns.ts";
 import { openApiDocument } from "./openapi/spec.ts";
 import { securityHeaders } from "./security/http.ts";
+import { timingSafeEqual } from "node:crypto";
+
+const safeEqual = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json",
@@ -49,12 +52,29 @@ export function buildApp(db: Db, overrides: Partial<AppContext> = {}): { app: Ap
   router.limiter = app.limiter;
   router.trustProxy = config.trustProxy;
   router.secureCookies = config.secureCookies;
+  router.onRequest = (m, route, status, sec) => app.metrics.observeRequest(m, route, status, sec);
 
   router.get("/healthz", async () => {
     await app.db.query("select 1");
     return { ok: true, payments: app.payments.name, sms: app.sms.name, routing: app.routing.constructor.name };
   });
   router.get("/api/openapi.json", () => openApiDocument(router));
+  // Prometheus scrape endpoint. Production: only with METRICS_TOKEN (scraper sends it as a Bearer token).
+  router.get("/metrics", async (ctx) => {
+    if (config.isProd || config.metricsToken) {
+      const auth = ctx.req.headers.authorization ?? "";
+      if (!config.metricsToken || !safeEqual(auth, `Bearer ${config.metricsToken}`)) {
+        send(ctx.res, 404, { error: { code: "route_not_found" } });
+        ctx.handled = true;
+        return undefined;
+      }
+    }
+    const body = await app.metrics.render(app.db);
+    ctx.res.writeHead(200, { "content-type": "text/plain; version=0.0.4; charset=utf-8", "cache-control": "no-store" });
+    ctx.res.end(body);
+    ctx.handled = true;
+    return undefined;
+  });
 
   identityRoutes(router, app);
   catalogRoutes(router, app);
@@ -73,7 +93,7 @@ export function buildApp(db: Db, overrides: Partial<AppContext> = {}): { app: Ap
     securityHeaders(res, config.isProd);
     const url = new URL(req.url ?? "/", "http://localhost");
     try {
-      if (url.pathname.startsWith("/api/") || url.pathname === "/healthz") {
+      if (url.pathname.startsWith("/api/") || url.pathname === "/healthz" || url.pathname === "/metrics") {
         if (await router.handle(req, res, url)) return;
         return send(res, 404, { error: { code: "route_not_found" } });
       }

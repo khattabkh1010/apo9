@@ -125,3 +125,16 @@ test("rate limiting: OTP requests per IP are capped with Retry-After", async () 
   assert.equal(spoof.status, 429);
   s.app.limiter!.reset();
 });
+
+test("metrics: Prometheus text with HTTP and operational gauges", async () => {
+  await fetch(s.base + "/healthz");
+  const r = await fetch(s.base + "/metrics");
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get("content-type")!, /text\/plain/);
+  const body = await r.text();
+  assert.match(body, /abu9_http_requests_total\{method="GET",route="\/healthz",status="200"\} \d+/);
+  assert.match(body, /abu9_http_request_duration_seconds_bucket\{method="GET",route="\/healthz",le="\+Inf"\} \d+/);
+  for (const g of ["abu9_orders_active", "abu9_dispatch_oldest_unassigned_seconds", "abu9_couriers_online", "abu9_orders_awaiting_restaurant"]) assert.match(body, new RegExp(`^${g} \\d`, "m"), g);
+  // Route patterns, never raw ids, keep label cardinality bounded.
+  assert.doesNotMatch(body, /route="\/api\/v1\/restaurants\/najd/);
+});
