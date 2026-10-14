@@ -15,6 +15,7 @@ import { logisticsRoutes } from "./modules/logistics.ts";
 import { creatorRoutes } from "./modules/creator.ts";
 import { plusRoutes } from "./modules/plus.ts";
 import { paymentRoutes } from "./modules/payments.ts";
+import { onboardingRoutes } from "./modules/onboarding.ts";
 import { openApiDocument } from "./openapi/spec.ts";
 import { securityHeaders } from "./security/http.ts";
 
@@ -64,6 +65,7 @@ export function buildApp(db: Db, overrides: Partial<AppContext> = {}): { app: Ap
   creatorRoutes(router, app);
   plusRoutes(router, app);
   paymentRoutes(router, app);
+  onboardingRoutes(router, app);
 
   const server = createServer(async (req, res) => {
     securityHeaders(res, config.isProd);

@@ -82,7 +82,7 @@ export function restaurantRoutes(r: Router, app: AppContext) {
     const [cats, items, branches] = await Promise.all([
       app.db.query("select * from menu_categories where restaurant_id = $1 order by sort", [rid]),
       app.db.query("select m.*, (select json_agg(json_build_object('branchId', a.branch_id, 'available', a.is_available, 'stock', a.stock_qty)) from branch_item_availability a where a.item_id = m.id) branch_overrides from menu_items m where restaurant_id = $1 order by sort", [rid]),
-      app.db.query("select id, name_ar, accepting_orders, prep_minutes_default from branches where restaurant_id = $1", [rid]),
+      app.db.query("select id, name_ar, accepting_orders, prep_minutes_default, opening_hours from branches where restaurant_id = $1 order by created_at", [rid]),
     ]);
     return { categories: cats.rows, items: items.rows, branches: branches.rows };
   });

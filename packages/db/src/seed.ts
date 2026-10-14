@@ -261,9 +261,10 @@ async function seed(db: Db): Promise<void> {
     let ri = 0;
     for (const r of RESTAURANTS) {
       const rid = await id(
-        `insert into restaurants(slug, name_ar, name_en, description_ar, cuisine_tags, brand_color, status, activated_at, is_demo, rating_sum, rating_count)
-         values ($1,$2,$3,$4,$5,$6,'active', now() - ($7 || ' days')::interval, true, $8, $9)`,
-        [r.slug, r.ar, r.en, r.dAr, r.tags, "#" + r.color.slice(2), String(10 + ri * 9), 46 * (20 + ri), 10 * (2 + ri) * 1],
+        `insert into restaurants(slug, name_ar, name_en, description_ar, cuisine_tags, brand_color, status, activated_at, is_demo, rating_sum, rating_count, cr_number)
+         values ($1,$2,$3,$4,$5,$6,'active', now() - ($7 || ' days')::interval, true, $8, $9, $10)`,
+        // Fictional CR numbers (format only: 10 digits) — not real registrations.
+        [r.slug, r.ar, r.en, r.dAr, r.tags, "#" + r.color.slice(2), String(10 + ri * 9), 46 * (20 + ri), 10 * (2 + ri) * 1, `00000000${String(ri + 10).padStart(2, "0")}`],
       );
       // fix rating: avg ≈ 4.6
       await q.query("update restaurants set rating_sum = rating_count * 46 / 10 where id = $1", [rid]);

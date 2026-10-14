@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { patch, post, put } from "../shared/api.ts";
 import { date, sar, time } from "../shared/i18n.ts";
-import { ask, askReason, Brand, DashShell, Empty, Kpis, Loadable, MfaGate, OtpLogin, PageHead, StatusBadge, ToastHost, mount, toast, useHashRoute, useQuery, useSession } from "../shared/ui.tsx";
+import { ask, askReason, Brand, DashShell, Empty, Kpis, Loadable, MfaGate, OtpLogin, PageHead, Sheet, StatusBadge, ToastHost, mount, toast, useHashRoute, useQuery, useSession } from "../shared/ui.tsx";
 
 const DEMOS: Array<[string, string]> = [["مشرف العمليات", "0500000901"], ["المالية", "0500000902"]];
 const NAV: Array<[string, string]> = [
@@ -407,14 +407,52 @@ function Config() {
   );
 }
 
+function RestaurantReview({ id, onClose, onDone }: { id: string; onClose: () => void; onDone: () => void }) {
+  const q = useQuery(`/admin/restaurants/${id}/onboarding`);
+  const zones = useQuery("/admin/zones");
+  const STEP: Record<string, string> = { profile: "البيانات والسجل التجاري", branch: "الفروع", hours: "أوقات العمل", menu: "المنيو (٣ أصناف+)", terms: "الموافقة على الاتفاقية", coverage: "نطاق التوصيل (العمليات)" };
+  const addCoverage = async (branchId: string) => {
+    const zoneId = await ask({ title: "المنطقة", choices: (zones.data?.zones ?? []).map((z: any) => [z.id, `${z.name_ar} · ${z.code}`] as [string, string]) });
+    if (!zoneId) return;
+    const km = await ask({ title: "أقصى مسافة طريق (كم)", kind: "number", initial: "6", min: 0.5, max: 30 });
+    if (km === null) return;
+    const mins = await ask({ title: "أقصى زمن رحلة (دقيقة)", kind: "number", initial: "22", min: 5, max: 60 });
+    if (mins === null) return;
+    const reason = await askReason();
+    if (reason) await act(() => put("/admin/coverage-rules", { branchId, zoneId, enabled: true, maxRoadKm: Number(km), maxTravelMinutes: Number(mins), reason }), "أُضيفت التغطية", q.reload);
+  };
+  return (
+    <Sheet center label="مراجعة التهيئة" onClose={onClose}>
+      <Loadable q={q}>
+        {(d) => (
+          <div className="stack">
+            <h2>مراجعة التهيئة</h2>
+            {d.steps.map((s: any) => <div key={s.key} className="row between small"><span>{STEP[s.key] ?? s.key}</span>{s.done ? <span className="badge ok">مكتمل</span> : <span className="badge warn">ناقص</span>}</div>)}
+            <h3>الفروع</h3>
+            {d.branches.map((b: any) => <div key={b.id} className="row between small"><span>{b.name_ar} · {b.district ?? "—"} <span className="num muted" dir="ltr">({b.lat.toFixed(4)}, {b.lng.toFixed(4)})</span></span><button className="btn sm" onClick={() => void addCoverage(b.id)}>+ تغطية</button></div>)}
+            <p className="xs muted">التفعيل يبدأ الفترة التجريبية المجانية (30 يوماً) ويُظهر المطعم للعملاء داخل نطاق التغطية.</p>
+            <button className="btn primary lg" disabled={!d.readyForActivation} onClick={async () => { const reason = await askReason("مثال: اكتمل التدريب ومراجعة المنيو."); if (reason) await act(() => post(`/admin/restaurants/${id}/activate`, { reason }), "تم التفعيل", onDone); }}>تفعيل المطعم</button>
+          </div>
+        )}
+      </Loadable>
+    </Sheet>
+  );
+}
+
 function Partners() {
   const r = useQuery("/admin/restaurants");
   const c = useQuery("/admin/customers");
+  const [review, setReview] = useState<string | null>(null);
+  const setStatus = async (x: any, status: "active" | "suspended") => {
+    const reason = await askReason(status === "suspended" ? "يختفي المطعم من الاكتشاف ولا يستقبل طلبات جديدة." : undefined, status === "suspended" ? `إيقاف ${x.name_ar}` : `إعادة تفعيل ${x.name_ar}`);
+    if (reason) await act(() => post(`/admin/restaurants/${x.id}/status`, { status, reason }), "تم", r.reload);
+  };
   return (
     <>
       <PageHead title="الشركاء والعملاء" />
       <div className="stack lg">
-        <Loadable q={r}>{(d) => (<section className="panel table-wrap"><h3>المطاعم</h3><table className="table"><thead><tr><th>المطعم</th><th>الباقة</th><th>الاشتراك</th><th>طلبات ٣٠ يوماً</th></tr></thead><tbody>{d.restaurants.map((x: any) => <tr key={x.id}><td>{x.name_ar} {x.is_demo && <span className="demo-flag">تجريبي</span>}</td><td>{x.plan_code}</td><td><StatusBadge s={x.sub_status ?? "—"} />{x.sub_status === "trialing" && <div className="xs muted">حتى {date(x.trial_ends_at)}</div>}</td><td className="num">{x.orders_30d}</td></tr>)}</tbody></table></section>)}</Loadable>
+        <Loadable q={r}>{(d) => (<section className="panel table-wrap"><h3>المطاعم</h3><table className="table"><thead><tr><th>المطعم</th><th>الحالة</th><th>الباقة</th><th>الاشتراك</th><th>طلبات ٣٠ يوماً</th><th /></tr></thead><tbody>{d.restaurants.map((x: any) => <tr key={x.id}><td>{x.name_ar} {x.is_demo && <span className="demo-flag">تجريبي</span>}</td><td><StatusBadge s={x.status} /></td><td>{x.plan_code ?? "—"}</td><td>{x.sub_status ? <StatusBadge s={x.sub_status} /> : "—"}{x.sub_status === "trialing" && <div className="xs muted">حتى {date(x.trial_ends_at)}</div>}</td><td className="num">{x.orders_30d}</td><td>{x.status === "onboarding" ? <button className="btn sm primary" onClick={() => setReview(x.id)}>مراجعة</button> : x.status === "active" ? <button className="btn sm ghost" onClick={() => void setStatus(x, "suspended")}>إيقاف</button> : x.status === "suspended" ? <button className="btn sm" onClick={() => void setStatus(x, "active")}>إعادة تفعيل</button> : null}</td></tr>)}</tbody></table></section>)}</Loadable>
+        {review && <RestaurantReview id={review} onClose={() => setReview(null)} onDone={() => { setReview(null); void r.reload(); }} />}
         <Loadable q={c}>{(d) => (<section className="panel table-wrap"><h3>العملاء</h3><table className="table"><thead><tr><th>الاسم</th><th>الجوال</th><th>الطلبات</th><th>أبو9+</th><th>الحالة</th></tr></thead><tbody>{d.customers.map((x: any) => <tr key={x.id}><td>{x.name ?? "—"}</td><td className="num">{x.phone}</td><td className="num">{x.orders}</td><td>{x.plus ? "نعم" : "—"}</td><td><StatusBadge s={x.status} /></td></tr>)}</tbody></table></section>)}</Loadable>
       </div>
     </>

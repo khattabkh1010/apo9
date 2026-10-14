@@ -186,12 +186,17 @@ export function identityRoutes(r: Router, app: AppContext) {
   type MfaRow = { phone: string; totp_secret_enc: string | null; totp_enabled_at: Date | null; totp_last_step: number | null };
   const mfaRow = async (q: { query: AppContext["db"]["query"] }, userId: string, lock = false) =>
     (await q.query<MfaRow>(`select phone, totp_secret_enc, totp_enabled_at, totp_last_step from users where id = $1${lock ? " for update" : ""}`, [userId])).rows[0]!;
-  const devCode = (sealed: string | null) => (config.totpDevEcho && sealed ? { devCode: totpAt(unseal(sealed, config.mfaEncryptionKey), currentStep()), devNote: "DEV ONLY — TOTP echo" } : {});
+  // Dev echo returns the first code that is still accepted (the current step may already be spent).
+  const devCode = (sealed: string | null, lastStep: number | null = null) => {
+    if (!config.totpDevEcho || !sealed) return {};
+    const step = Math.max(currentStep(), (lastStep ?? -1) + 1);
+    return step <= currentStep() + 1 ? { devCode: totpAt(unseal(sealed, config.mfaEncryptionKey), step), devNote: "DEV ONLY — TOTP echo" } : {};
+  };
 
   r.get("/api/v1/auth/mfa", async (ctx) => {
     const p = requireUser(ctx);
     const u = await mfaRow(app.db, p.userId);
-    return { required: p.mfa?.required ?? false, verified: p.mfa?.verified ?? false, enrolled: !!u.totp_enabled_at, ...(u.totp_enabled_at ? devCode(u.totp_secret_enc) : {}) };
+    return { required: p.mfa?.required ?? false, verified: p.mfa?.verified ?? false, enrolled: !!u.totp_enabled_at, ...(u.totp_enabled_at ? devCode(u.totp_secret_enc, u.totp_last_step) : {}) };
   });
 
   r.post("/api/v1/auth/mfa/totp/enroll", async (ctx) => {

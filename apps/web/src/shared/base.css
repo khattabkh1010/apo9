@@ -200,3 +200,5 @@ img,video{max-width:100%;display:block}
   .main{padding:18px 16px 48px}
   .board{grid-template-columns:1fr}
 }
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
+@media (max-width:600px){.grid-2{grid-template-columns:1fr}}

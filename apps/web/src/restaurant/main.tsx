@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { patch, post } from "../shared/api.ts";
 import { date, sar, time, minutesUntil } from "../shared/i18n.ts";
+import { Apply, HoursSheet, MenuToolbar, ModifiersSheet, Onboarding } from "./onboarding.tsx";
 import { ask, DashShell, Empty, Kpis, Loadable, OtpLogin, PageHead, Brand, Sheet, StatusBadge, ToastHost, mount, toast, useHashRoute, useQuery, useSession } from "../shared/ui.tsx";
 
 const DEMOS: Array<[string, string]> = [["مالك برجر نجد", "0500000101"], ["مالك مشاوي الديرة", "0500000102"]];
@@ -14,16 +15,30 @@ function App() {
 
 function Portal() {
   const mine = useQuery("/restaurant/mine");
-  const [route] = useHashRoute("orders");
+  const [route, go] = useHashRoute("orders");
+  const [picked, setPicked] = useState<string | null>(null);
   return (
     <Loadable q={mine}>
       {(d) => {
-        const r = d.restaurants[0];
-        if (!r) return <Empty title="لا يوجد مطعم مرتبط بحسابك" body="تواصل مع فريق أبو9 لإكمال التسجيل." />;
-        const base = route.split("/")[0];
+        const r = d.restaurants.find((x: any) => x.id === picked) ?? d.restaurants[0];
+        if (!r) return (<><Apply onDone={() => void mine.reload()} /><ToastHost /></>);
+        const onboarding = r.status === "onboarding";
+        const nav: Array<[string, string]> = onboarding ? [["onboarding", "التهيئة"], ...NAV] : [...NAV, ["onboarding", "بيانات المطعم"]];
+        const base = route.split("/")[0] === "orders" && onboarding && !location.hash ? "onboarding" : route.split("/")[0];
+        const foot = (
+          <>
+            {d.restaurants.length > 1 && (
+              <select className="input" aria-label="المطعم" value={r.id} onChange={(e) => setPicked(e.target.value)}>
+                {d.restaurants.map((x: any) => <option key={x.id} value={x.id}>{x.name_ar}</option>)}
+              </select>
+            )}
+            {onboarding && <span className="badge warn">قيد التهيئة</span>}
+            {r.is_demo && <span className="demo-flag">بيانات تجريبية</span>}
+          </>
+        );
         return (
-          <DashShell sub={r.name_ar} nav={NAV} route={route} foot={r.is_demo ? <span className="demo-flag">بيانات تجريبية</span> : undefined}>
-            {base === "menu" ? <Menu rid={r.id} /> : base === "analytics" ? <Analytics rid={r.id} /> : base === "content" ? <Content rid={r.id} /> : base === "promotions" ? <Promotions rid={r.id} /> : base === "billing" ? <Billing rid={r.id} /> : base === "settlements" ? <Settlements rid={r.id} /> : <Orders rid={r.id} />}
+          <DashShell sub={r.name_ar} nav={nav} route={base === "onboarding" ? "onboarding" : route} foot={foot}>
+            {base === "onboarding" ? <Onboarding rid={r.id} go={go} /> : base === "menu" ? <Menu rid={r.id} /> : base === "analytics" ? <Analytics rid={r.id} /> : base === "content" ? <Content rid={r.id} /> : base === "promotions" ? <Promotions rid={r.id} /> : base === "billing" ? <Billing rid={r.id} /> : base === "settlements" ? <Settlements rid={r.id} /> : <Orders rid={r.id} />}
           </DashShell>
         );
       }}
@@ -127,6 +142,8 @@ function AcceptSheet({ o, onClose, onAccept }: { o: any; onClose: () => void; on
 function Menu({ rid }: { rid: string }) {
   const q = useQuery(`/restaurant/${rid}/menu`);
   const [editing, setEditing] = useState<any>(null);
+  const [mods, setMods] = useState<any>(null);
+  const [hours, setHours] = useState<any>(null);
   const toggle = async (it: any) => {
     try { await patch(`/restaurant/${rid}/menu/items/${it.id}`, { isAvailable: !it.is_available }); await q.reload(); } catch (e) { toast((e as Error).message, true); }
   };
@@ -135,7 +152,7 @@ function Menu({ rid }: { rid: string }) {
   };
   return (
     <>
-      <PageHead title="المنيو والتوفر" sub="تغييرات الأسعار والتوفر تُسجّل في سجل التدقيق." />
+      <PageHead title="المنيو والتوفر" sub="تغييرات الأسعار والتوفر تُسجّل في سجل التدقيق." actions={q.data ? <MenuToolbar rid={rid} categories={q.data.categories} onChanged={() => void q.reload()} /> : undefined} />
       <Loadable q={q}>
         {(d) => (
           <div className="stack lg">
@@ -143,11 +160,15 @@ function Menu({ rid }: { rid: string }) {
               <h3>الفروع</h3>
               {d.branches.map((b: any) => (
                 <div key={b.id} className="row between">
-                  <span>{b.name_ar} · تحضير افتراضي <span className="num">{b.prep_minutes_default}</span> د</span>
-                  <button className={`btn sm ${b.accepting_orders ? "" : "primary"}`} onClick={() => void branchToggle(b)}>{b.accepting_orders ? "إيقاف مؤقت" : "استئناف الطلبات"}</button>
+                  <span>{b.name_ar} · تحضير افتراضي <span className="num">{b.prep_minutes_default}</span> د{Object.values(b.opening_hours ?? {}).some((x: any) => x.length) ? "" : <span className="badge warn" style={{ marginInlineStart: 8 }}>بدون أوقات عمل</span>}</span>
+                  <span className="row" style={{ gap: 6 }}>
+                    <button className="btn sm ghost" onClick={() => setHours(b)}>أوقات العمل</button>
+                    <button className={`btn sm ${b.accepting_orders ? "" : "primary"}`} onClick={() => void branchToggle(b)}>{b.accepting_orders ? "إيقاف مؤقت" : "استئناف الطلبات"}</button>
+                  </span>
                 </div>
               ))}
             </section>
+            {d.categories.length === 0 && <Empty title="المنيو فارغ" body="ابدأ بإضافة قسم (مثل «الأطباق الرئيسية») ثم أضف الأصناف وأسعارها." />}
             {d.categories.map((c: any) => (
               <section key={c.id} className="panel stack">
                 <h3>{c.name_ar}</h3>
@@ -161,6 +182,7 @@ function Menu({ rid }: { rid: string }) {
                         <td>{i.is_available ? <span className="badge ok">متوفر</span> : <span className="badge bad">نفد</span>}</td>
                         <td className="row" style={{ justifyContent: "flex-end" }}>
                           <button className="btn sm" onClick={() => void toggle(i)}>{i.is_available ? "نفد" : "متوفر"}</button>
+                          <button className="btn sm ghost" onClick={() => setMods(i)}>الخيارات</button>
                           <button className="btn sm ghost" onClick={() => setEditing(i)}>تعديل</button>
                         </td>
                       </tr>
@@ -173,6 +195,8 @@ function Menu({ rid }: { rid: string }) {
         )}
       </Loadable>
       {editing && <EditItem rid={rid} item={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void q.reload(); }} />}
+      {mods && <ModifiersSheet rid={rid} item={mods} onClose={() => setMods(null)} />}
+      {hours && <HoursSheet rid={rid} branch={hours} onClose={() => setHours(null)} onSaved={() => { setHours(null); void q.reload(); }} />}
     </>
   );
 }

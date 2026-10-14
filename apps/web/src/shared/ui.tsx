@@ -296,6 +296,8 @@ const STATUS: Record<string, [string, string]> = {
   paused: ["متوقف", "bad"],
   restricted: ["مقيّد", "warn"],
   pending: ["قيد الانتظار", "warn"],
+  onboarding: ["قيد التهيئة", "warn"],
+  churned: ["منسحب", ""],
 };
 export function StatusBadge({ s }: { s: string }) {
   const [label, cls] = STATUS[s] ?? [s, ""];

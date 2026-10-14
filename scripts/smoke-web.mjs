@@ -73,6 +73,71 @@ await check("admin login + MFA + dialog", {
   },
 });
 
+// Full restaurant onboarding journey through the UI: apply → menu, modifiers, hours, terms → ops activates.
+const phone = `0559${String(Date.now()).slice(-6)}`;
+const dialog = async (p, value) => {
+  await p.waitForSelector("[role=dialog] form");
+  if (value !== undefined) {
+    const input = p.locator("[role=dialog] form input:not([type=radio]), [role=dialog] form textarea").first();
+    if (await input.count()) await input.fill(value);
+  }
+  await p.locator("[role=dialog] form button:not([type=button])").first().click();
+  await p.waitForTimeout(150);
+};
+await check("restaurant onboarding via UI", {
+  path: "/restaurant", phone, expect: "text=انضم إلى أبو9",
+  extra: async (p) => {
+    await p.fill("#ap-nameAr", "مطبخ الاختبار (وهمي)");
+    await p.fill("#ap-nameEn", "UI Test Kitchen");
+    await p.fill("#ap-cuisine", "سعودي، مندي");
+    await p.fill("#ap-crNumber", "1010777666");
+    await p.fill("#ap-branchAr", "فرع العليا");
+    await p.click("button:has-text('إرسال طلب الانضمام')");
+    await p.waitForSelector("text=تهيئة المطعم");
+    await p.goto(`${BASE}/restaurant#/menu`);
+    await p.click("button:has-text('+ قسم')");
+    await dialog(p, "الأطباق الرئيسية");
+    await dialog(p, "Mains");
+    await p.waitForSelector("h3:has-text('الأطباق الرئيسية')");
+    for (const [ar, en, price] of [["كبسة", "Kabsa", "45"], ["مندي", "Mandi", "38"], ["سلطة", "Salad", "15"]]) {
+      await p.click("button:has-text('+ صنف')");
+      await p.fill("#ni-a", ar); await p.fill("#ni-e", en); await p.fill("#ni-p", price);
+      await p.click("[role=dialog] button:has-text('إضافة')");
+      await p.waitForSelector(`td:has-text('${ar}')`);
+    }
+    await p.locator("button:has-text('الخيارات')").first().click();
+    await p.click("button:has-text('+ مجموعة')");
+    await dialog(p); // variant (first choice)
+    await dialog(p, "الحجم");
+    await p.waitForSelector("text=إلزامي");
+    await p.keyboard.press("Escape");
+    await p.click("button:has-text('أوقات العمل')");
+    await p.locator("[role=dialog] button:has-text('+ فترة')").first().click();
+    await p.click("button:has-text('نسخ أوقات الأحد لكل الأيام')");
+    await p.click("[role=dialog] button:has-text('حفظ')");
+    await p.waitForSelector("[role=dialog]", { state: "detached" });
+    await p.goto(`${BASE}/restaurant#/onboarding`);
+    await p.click("button:has-text('مراجعة والموافقة')");
+    await dialog(p);
+    await p.waitForSelector("text=أكملت خطواتك");
+  },
+});
+await check("ops activates the new restaurant via UI", {
+  path: "/admin#/partners", phone: "0500000901", staff: true, expect: "button:has-text('مراجعة')",
+  extra: async (p) => {
+    await p.click("button:has-text('مراجعة')");
+    await p.click("button:has-text('+ تغطية')");
+    await dialog(p); // first zone
+    await dialog(p, "6");
+    await dialog(p, "22");
+    await dialog(p, "تغطية فرع جديد");
+    await p.waitForSelector("button:has-text('تفعيل المطعم'):not([disabled])");
+    await p.click("button:has-text('تفعيل المطعم')");
+    await dialog(p, "اكتملت المراجعة والتدريب");
+    await p.waitForSelector("text=تم التفعيل");
+  },
+});
+
 await browser.close();
 if (failed) {
   console.log(`${failed} smoke check(s) failed`);
