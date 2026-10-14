@@ -48,6 +48,10 @@ Launch: a few dense Riyadh districts (seeded: Olaya, Al Malqa, Hittin, Al Yasmin
 | Auto-refunds | Instant for eligible reason codes ≤ SAR 50 and ≤ 2 refunds/30 days; above that, agent review | services/support.ts |
 | Attribution | Referral code wins; else the video the order came from | services/orders.ts |
 | Feed ranking | deliverable first, then (likes×3 + views/100) with age decay — no personalisation | modules/catalog.ts |
+| Restaurant onboarding | Self-serve application (CR 10 digits; VAT optional, 15 digits starting and ending with 3). Activation needs a profile, ≥1 branch with hours, ≥1 category with ≥3 priced items, acceptance of the **draft** terms, and ops-configured coverage. The trial starts at activation on Starter. A new restaurant's contract has **no** auto-deduction reason codes | domain/onboarding.ts, modules/onboarding.ts |
+| Creator campaigns | Incentive SAR 1–50 per attributed order or ≤30% of food value; a budget is required for paid incentives; ≤90 days. Restaurants fund only their own campaigns; ABU9 or shared funding is proposed by ops. Every campaign is approved by someone other than its proposer | domain/creators.ts |
+| Separation of duties | Settlement approver ≠ payout recorder; campaign proposer ≠ approver | services/settlements.ts, modules/campaigns.ts |
+| Staff security | TOTP required for ops, finance and admin roles | modules/identity.ts |
 
 ## 6. Open decisions for the founders (material — not decided in code)
 1. Final ABU9+ price and annual plan; final restaurant plan prices and annual discount.
@@ -56,6 +60,8 @@ Launch: a few dense Riyadh districts (seeded: Olaya, Al Malqa, Hittin, Al Yasmin
 4. Marketplace VAT model (agent vs principal for delivery and food) and ZATCA e-invoicing scope.
 5. Courier-facing earnings display: today only company-level per-order amounts are shown (partners set courier pay).
 6. Customer cancellation after acceptance (currently: via support only).
+7. Restaurant subscription terms: the in-app acceptance records the version `restaurant-subscription-v0-draft`. Legal must approve final terms (including any auto-deduction reason codes) before real restaurants sign.
+8. Creator incentive payout mechanics (who pays creators, when, and how it is invoiced and taxed). Incentives are accrued as `pending` only.
 
 ## 7. Out of scope for this MVP foundation
 Native mobile builds, real maps/routing, push notifications, live PSP/SMS, bank payouts, ML ranking/ETAs, multi-city. See BACKLOG.md.

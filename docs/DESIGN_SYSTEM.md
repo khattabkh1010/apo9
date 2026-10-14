@@ -14,7 +14,7 @@ Source of truth: `packages/design-tokens/src/tokens.ts` → emitted as CSS varia
 - Display: **Readex Pro** (geometric Arabic + Latin) for headings, prices, codes, KPIs.
 - Body/UI: **IBM Plex Sans Arabic**.
 - Scale 1.25 from 16 px: 12 · 14 · 16 · 20 · 25 · 31 · 48. Western digits for prices, codes and times (`.num`, isolated LTR).
-- Fonts load from Google Fonts with system fallbacks (self-host before launch — CSP).
+- Fonts are self-hosted from `@fontsource` (Arabic and Latin subsets, `font-display: swap`), so there are no third-party requests and the strict CSP holds.
 
 ## Layout rules
 - Arabic-first: `dir="rtl"` by default, **logical CSS properties only** (`margin-inline-start`, `inset-inline-end`), so English (LTR) works without overrides.
@@ -23,7 +23,7 @@ Source of truth: `packages/design-tokens/src/tokens.ts` → emitted as CSS varia
 - Every list has loading (skeleton), empty (what to do next) and error (what happened + retry) states via `Loadable`.
 
 ## Components
-Button (`primary` saffron, `dark`, `danger`, `ghost`; `lg`, `sm`, `block`), Field/Input (+ `code` variant for OTP and handover codes), Badge (`ok`/`warn`/`bad`/`live` pulse), StatusBadge (one vocabulary for all order/job/settlement states), Sheet (bottom sheet; centred dialog on desktop), Toast, Sadu, Kpis, PageHead, DashShell, OtpLogin, Empty, ErrorBox, Skeleton, inline stroke icons.
+Button (`primary` saffron, `dark`, `danger`, `ghost`; `lg`, `sm`, `block`), Field/Input (+ `code` variant for OTP and handover codes), Badge (`ok`/`warn`/`bad`/`live` pulse), StatusBadge (one vocabulary for all order/job/settlement states), Sheet (bottom sheet; centred dialog on desktop), **Dialog** (`ask()` / `askReason()` / `confirmDialog()`: promise-based, keyboard and screen-reader accessible, used for every decision that needs input or a reason; there is no `window.prompt`), **MfaGate** (staff second factor), Toast, Sadu, Kpis, PageHead, DashShell, OtpLogin, Empty, ErrorBox, Skeleton, inline stroke icons.
 
 ## Motion
 One orchestrated moment per surface: sheet rise, new-order ticket rise on the kitchen board, the live pulse on in-progress states. `prefers-reduced-motion` disables all animation.

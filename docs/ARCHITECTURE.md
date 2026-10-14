@@ -13,6 +13,9 @@ A **modular monolith**: one deployable API process, one PostgreSQL database, str
          │  services/ orders · coverage · dispatch · support · settlements · plus · ledger posting
          │  jobs.ts   acceptance timeout · dispatch retry · renewals · revenue recognition
          │            points expiry · restaurant billing · claim deductibility
+         │            onboarding · campaigns (four-eyes)
+         │  security  cookie sessions + CSRF · staff TOTP · rate limits · CSP
+         │  observability  /metrics (Prometheus) · JSON logs
          │  adapters  PaymentProvider(mock) · SmsProvider(mock) · RoutingProvider(heuristic) · EventBus
          └───────┬──────────────────────────────┬────────────────┘
                  │ packages/domain (pure)       │ packages/db (wire client, migrations)
@@ -24,9 +27,9 @@ A **modular monolith**: one deployable API process, one PostgreSQL database, str
 |---|---|---|
 | TypeScript throughout | ✅ Node 22 native TS (type stripping), strict `tsc` | — |
 | NestJS | Plain `node:http` router + zod, module-per-domain | No npm registry in the build sandbox. Modules map 1:1 to Nest modules (routes → controllers, services → providers). |
-| `pg` driver | In-repo v3 wire-protocol client (`packages/db/src/pg.ts`) | Same reason. SCRAM auth, parameterised extended protocol, pool, transactions. **No TLS** — swap to `pg` behind the same `Db` interface before production. |
+| `pg` driver | `pg` (node-postgres) behind the in-house `Db`/`Queryable` interface (`packages/db/src/pg.ts`) | Session 2 replaced the offline wire-protocol client. The interface pins value semantics explicitly (bigint, numeric, date, timestamp, json params). TLS is set through `sslmode` and `DATABASE_CA_CERT`. |
 | Next.js dashboards | React 19 SPAs bundled with esbuild | Next.js unavailable offline. Components are framework-agnostic; port into Next app router pages. |
-| React Native / Expo | Mobile-first responsive web (customer, courier) | Expo unavailable offline. Domain + API are ready; RN screens are backlog P1. |
+| React Native / Expo | Mobile-first responsive web (customer, courier) | Domain and API are ready (Bearer-token transport exists for native clients); RN screens are backlog P1. |
 | Redis + queue | In-process EventBus + Postgres advisory-locked jobs | Correct for one instance. Redis pub/sub + BullMQ needed for horizontal scale. |
 | Object storage | Local disk adapter served at `/media` (Range support) | S3-compatible storage + CDN + transcoding in backlog. |
 
@@ -93,15 +96,26 @@ Ledger postings (all balanced; DB trigger enforces balance at commit; entries/li
 GMV, food collected for restaurants, ABU9 revenue and costs are reported separately on the admin dashboard. Reconciliation checks: trial balance, PSP net captured vs PSP-clearing balance, orders without capture entries, deliveries without cost entries.
 
 ## 6. Security model
-- OTP login (HMAC-hashed codes, 5-minute TTL, 5 attempts, 5 requests/hour/phone); opaque bearer sessions stored hashed (SHA-256), 30-day expiry, revocable.
+- **Login**: OTP with HMAC-hashed codes, a 5-minute TTL, 5 attempts, and 5 requests per hour per phone. Sessions are opaque tokens stored hashed (SHA-256) with a 30-day expiry, and are revocable.
+- **Transport**: native apps use a Bearer token. Web apps use an httpOnly `SameSite=Lax` cookie scoped to `/api`, plus a CSRF token derived from the session token (`sha256("csrf:"+token)`, double-submit, no server state) that is required on every cookie-authenticated write. Tokens are never placed in URLs.
+- **Staff MFA**: any session holding a global staff role gets **no** staff permission until it passes TOTP in that session. Secrets are sealed with AES-256-GCM, and the last accepted time-step is stored to stop replay.
+- **Four-eyes**: a campaign proposer cannot approve it, and a settlement approver cannot record its payout (enforced by both the API and a DB constraint).
+- **Rate limits**: fixed windows per IP and per user (in-process; Redis when scaled out).
+- **Headers**: strict CSP (`script-src 'self'`), `frame-ancestors 'none'`, COOP, Permissions-Policy, nosniff, HSTS in production. Fonts are self-hosted.
 - RBAC: global roles (`ops_agent`, `ops_manager`, `finance`, `admin`) → permission sets; scoped roles (`restaurant_owner@restaurant`, `logistics_admin@company`, `courier@company`) checked per resource.
 - Server-side authoritative pricing; client totals only used as "price changed" guard.
 - Append-only ledger, points transactions and audit log enforced by DB triggers.
 - Courier location stored only while on an active job.
 - Production refuses to start with mock PSP/SMS or missing secrets.
 
-## 7. Scaling path (in order)
-1. Swap in `pg` with TLS; managed Postgres with PITR; read replica for dashboards.
+## 7. Restaurant onboarding
+Application (any user, CR/VAT validated) → the restaurant is `onboarding` and the applicant becomes its owner → a checklist (pure rules in `domain/onboarding.ts`): profile, branch, hours, ≥3 priced items, draft terms accepted, then branch coverage, which is ABU9's step → ops activation sets the restaurant `active` and starts the 30-day trial on the Starter plan. Contract terms start with **no** automatic deductions.
+
+## 8. Observability
+`GET /metrics` renders Prometheus text without a client library. Request metrics are keyed by route **pattern**, so label cardinality stays bounded. Operational gauges are computed from OLTP at scrape time. Alert rules live in `infra/prometheus/alerts.yml`, runbooks in `docs/RUNBOOKS.md`.
+
+## 9. Scaling path (in order)
+1. ~~Swap in `pg` with TLS~~ (done). Managed Postgres with PITR; read replica for dashboards.
 2. Move jobs to a worker process; Redis for EventBus fan-out (SSE across instances) and BullMQ queues.
 3. S3 + CloudFront/Akamai for media, HLS transcoding pipeline, upload virus scanning.
 4. Real routing provider + travel-time cache; then learned ETAs once there is trip data.

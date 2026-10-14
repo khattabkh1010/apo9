@@ -1,6 +1,6 @@
 # What is mocked, unfinished, risky — and what blocks a launch
 
-Honest status as of this build. Nothing here is a live licensed integration.
+This is the honest status as of this build. Nothing here is a live licensed integration. Last updated: session 2, after the security hardening, onboarding, customer features, campaigns and ops work.
 
 ## A. Mocks (must be replaced before real customers)
 | Mock | File | Integration path |
@@ -20,37 +20,47 @@ Honest status as of this build. Nothing here is a live licensed integration.
 5. **Terms**: customer T&Cs, ABU9+ terms (cancellation/refund policy assumptions in PRD §5), restaurant subscription agreement (including the open overage decision), logistics SLA contract with the auto-deduction reason codes the system expects.
 6. Consumer-protection review of displayed pricing (VAT-inclusive display, fee transparency already implemented).
 
-## C. Security risks to close
-| Risk | Status |
+## C. Security risks
+### Closed in this build (implemented and covered by tests)
+| Risk | Resolution |
 |---|---|
-| Postgres connection has **no TLS** (in-repo driver) | Blocker — move to `pg` with `sslmode=verify-full` |
-| No rate limiting beyond OTP | Add per-IP/per-user limits at the edge (WAF) and in-app |
-| Session tokens in `localStorage` (XSS → token theft) | Move to httpOnly, SameSite cookies + CSRF tokens for web; secure storage on native |
-| No CSP header; Google Fonts loaded from third party | Add strict CSP; self-host fonts |
-| Uploads not virus-scanned or content-type sniffed; no transcoding | Scan + transcode before moderation |
-| Admin "reason" prompts use `window.prompt` | Replace with proper modals; consider 4-eyes approval for payouts and large refunds |
-| No MFA for staff | Add TOTP/WebAuthn for admin/finance roles |
-| Secrets via env | Use a secret manager; rotate `OTP_HMAC_SECRET`, `PAYMENT_WEBHOOK_SECRET` |
-| No dependency/container scanning, pentest | Add to CI; external pentest before launch |
+| Postgres connection had no TLS | `pg` driver; `sslmode=verify-full`/`verify-ca` + `DATABASE_CA_CERT`; production refuses a non-local DB without verified TLS (verified against a TLS Postgres with a private CA) |
+| Session tokens in `localStorage` | Web apps use an httpOnly `SameSite=Lax` session cookie; a CSRF token derived from the session is required on every cookie-authenticated write; SSE uses the cookie (no tokens in URLs). Native clients keep Bearer tokens |
+| No staff MFA | TOTP (RFC 6238) is required before any ops/finance/admin permission applies; the secret is sealed with AES-256-GCM (`MFA_ENCRYPTION_KEY`); codes can't be replayed; enrolment is audited |
+| No rate limiting beyond OTP | In-app fixed-window limits: OTP per IP and per phone, MFA, checkout and writes per user, global per IP. `X-Forwarded-For` is trusted only with `TRUST_PROXY=1` |
+| No CSP; Google Fonts third party | Strict CSP (`script-src 'self'`, no inline scripts), COOP, Permissions-Policy, HSTS in production; fonts self-hosted |
+| `window.prompt` for reasons | Accessible in-app dialogs everywhere |
+| Payouts approved and released by the same person | Separation of duties: settlement approver ≠ payout recorder (API + DB constraint). Creator campaigns: proposer ≠ approver |
+
+### Still open
+| Risk | Next step |
+|---|---|
+| Rate-limit counters are in-process | Move to Redis when running >1 instance; also enforce at the WAF |
+| Uploads not virus-scanned or content-sniffed; no transcoding | Scan and transcode before moderation |
+| Large refunds: a single agent with `refunds.issue_large` can refund | Add a second-approver queue above a threshold (payouts and campaigns already have four-eyes) |
+| Staff TOTP reset has no UI | Admin reset flow with a second approver |
+| WebAuthn/passkeys for staff | Stronger than TOTP against phishing |
+| Secrets via env | Use a secret manager; rotate `OTP_HMAC_SECRET`, `PAYMENT_WEBHOOK_SECRET`, `MFA_ENCRYPTION_KEY` |
+| No dependency/container scanning, no pentest | Add to CI; external pentest before launch |
 | Fraud controls are basic (refund velocity, self-referral, promo limits) | Device fingerprinting, promo abuse graph, courier GPS spoofing checks |
 
 ## D. Unfinished features (built foundations exist unless noted)
 - **Native apps** (Expo customer + courier) — not started; web apps are mobile-first stand-ins.
 - **Maps**: address picking on a map, live courier map tiles (tracking uses a schematic route).
-- Restaurant **onboarding wizard** (restaurants are created by seed/ops today), branch hours editor, modifier group editor UI (API supports items/availability; modifier CRUD API is not built).
-- Customer address creation UI (API exists), favorites screen, notifications screen, group-order UI (API exists and is idempotent; no screens), ratings history.
+- ~~Restaurant onboarding, hours editor, modifier editor~~: done this session (application → checklist → ops activation; the trial starts at activation). Still missing: multi-branch management beyond adding branches, staff invitations, image uploads for menu items.
+- ~~Customer addresses, favourites, notifications, group-order UI~~: done this session. Addresses use device location or approximate district centres until a maps provider exists. Ratings history is still missing.
 - English: i18n infrastructure + customer core strings; dashboards are Arabic-only.
-- Creator campaign creation UI for restaurants/ops (tables + approval endpoints exist; campaigns are created via API/SQL).
+- ~~Creator campaign creation~~: done (restaurant and ops proposal, four-eyes approval, creator enrolment approval). Creator incentive **payouts** are recorded as `pending` and are not yet posted to the ledger or paid.
 - Capacity requests: admin creation endpoint exists, no admin UI form.
 - Pricing versions: API exists; admin UI shows history only.
 - PSP settlement-file ingestion and bank reconciliation.
 - Customer cancellation after acceptance (support-only today) and partial refunds UI for agents (amount prompt).
 - Courier earnings for the individual courier (company-level only, by design pending decision).
 - Analytics: no event warehouse; dashboards query OLTP directly.
-- Observability: structured JSON logs + request IDs only — no metrics/tracing/alerting yet.
+- Observability: JSON logs with request IDs, plus Prometheus `/metrics` (HTTP + operational gauges), alert rules (`infra/prometheus/alerts.yml`) and runbooks (`docs/RUNBOOKS.md`). Not yet: distributed tracing, dashboards, a deployed Prometheus/Alertmanager.
 - Accessibility: keyboard focus, labels, reduced motion done; no formal WCAG audit or screen-reader pass.
-- `@types/react` was unavailable offline, so **TSX files are bundled but not type-checked** (`npm run typecheck` covers domain/db/API). Add `@types/react` and include `apps/web` in tsconfig.
-- Docker image and CI workflow are written but **were not executed** here (no Docker daemon/registry in the sandbox). `package-lock.json` is committed; Docker and CI use `npm ci`.
+- ~~TSX not type-checked~~: all six web apps are under strict `tsc`.
+- Docker: the image was **built and run** in this environment (production fail-closed checks verified; dev container migrates and serves). `npm ci` *inside* the Docker build could not be exercised here (sandbox network policy), so it was validated with host-installed dependencies. The GitHub Actions workflow (tests, browser smoke, image build) **has not run yet**: it triggers on pull requests and `main`.
 
 ## E. Operational readiness gaps
 On-call/runbooks, backup & restore drill, load test of dispatch at peak (Thursday/Friday nights, Ramadan iftar/suhoor), courier-app offline behaviour, ops staffing for the 240-second acceptance window.

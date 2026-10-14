@@ -11,7 +11,7 @@ This repository is a working MVP foundation, not a mock-up: a TypeScript modular
 Requirements: Node ≥ 22.18 (runs TypeScript natively), PostgreSQL 16, ffmpeg (optional, renders placeholder demo clips).
 
 ```bash
-npm install                      # react, react-dom, zod, esbuild, typescript, @types/node
+npm ci                           # pinned by package-lock.json
 createdb abu9 && createdb abu9_test   # or: docker compose up postgres
 cp .env.example .env             # optional; dev defaults work locally
 npm run db:reset                 # migrate + seed fictional Riyadh demo data
@@ -26,7 +26,8 @@ npm start                        # http://localhost:8080
 | Restaurant dashboard | `/restaurant` | 0500000101 (Najd Burger), 0500000102 (Al Deera) |
 | Logistics partner portal | `/logistics` | 0500000301 |
 | Creator portal | `/creator` | 0500000401 |
-| Admin & operations | `/admin` | 0500000901 (ops/admin), 0500000902 (finance) |
+| Admin & operations | `/admin` | 0500000901 (ops/admin), 0500000902 (finance). Staff must set up TOTP on first login; in dev the code is auto-filled |
+| New restaurant | `/restaurant` | any new number (e.g. 0551234567) → application form → onboarding checklist |
 
 API docs: `GET /api/openapi.json` (also committed at `docs/api/openapi.json`, 131 operations).
 
@@ -34,8 +35,9 @@ API docs: `GET /api/openapi.json` (also committed at `docs/api/openapi.json`, 13
 
 | | |
 |---|---|
-| `npm test` | 40 domain unit tests + 5 Postgres client tests + 16 end-to-end API tests against a real database (`abu9_test`) |
-| `npm run typecheck` | strict TypeScript over domain, db and API |
+| `npm test` | 90 tests: domain unit tests, Postgres driver tests, and end-to-end API suites against a real database (`abu9_test`) covering the commercial flow, security (MFA, CSRF, rate limits, headers, metrics), onboarding, customer features and campaigns |
+| `node scripts/smoke-web.mjs` | Browser smoke test of all six apps against a running seeded API: real UI logins with cookie sessions and staff MFA, restaurant onboarding → activation, campaign proposal → approval, a two-customer group order. Start the API with `RATE_LIMIT=0 OTP_MAX_PER_HOUR=1000` for repeated local runs |
+| `npm run typecheck` | strict TypeScript over domain, db, API and all six web apps |
 | `npm run dev` | build web + API with `--watch` |
 | `npm run openapi` | regenerate `docs/api/openapi.json` from the live route table |
 | `npm run screenshots` | capture real screenshots of all six apps with headless Chromium |
@@ -58,3 +60,4 @@ docs/                  PRD, architecture, design system, API, deployment, launch
 - [docs/LAUNCH_BLOCKERS.md](docs/LAUNCH_BLOCKERS.md) — **what is mocked, unfinished or risky; read before any launch planning**
 - [docs/BACKLOG.md](docs/BACKLOG.md) — prioritised next work
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md), [docs/API.md](docs/API.md)
+- [docs/RUNBOOKS.md](docs/RUNBOOKS.md): first response for production alerts
