@@ -5,7 +5,7 @@
  *   node apps/web/build.ts --watch   rebuild on change
  */
 import { build, context, type BuildOptions } from "esbuild";
-import { mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tokensToCss } from "../../packages/design-tokens/src/tokens.ts";
@@ -25,7 +25,28 @@ const watch = process.argv.includes("--watch");
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(path.join(dist, "assets"), { recursive: true });
 
-const css = tokensToCss() + "\n" + readFileSync(path.join(root, "src/shared/base.css"), "utf8");
+// Self-hosted fonts (no third-party requests; required by the strict CSP). Arabic + Latin subsets only.
+const FONTS: Array<[pkg: string, weights: number[]]> = [
+  ["ibm-plex-sans-arabic", [400, 500, 600, 700]],
+  ["readex-pro", [400, 600, 700]],
+];
+mkdirSync(path.join(dist, "assets/fonts"), { recursive: true });
+let fontCss = "";
+for (const [pkg, weights] of FONTS) {
+  const dir = path.join(root, "../../node_modules/@fontsource", pkg);
+  for (const w of weights) {
+    for (const block of readFileSync(path.join(dir, `${w}.css`), "utf8").split("/* ").slice(1)) {
+      const name = block.slice(0, block.indexOf(" */"));
+      if (!/-(arabic|latin)-\d+-normal$/.test(name)) continue;
+      copyFileSync(path.join(dir, "files", `${name}.woff2`), path.join(dist, "assets/fonts", `${name}.woff2`));
+      fontCss += block
+        .slice(block.indexOf("@font-face"))
+        .replace(/src: [^;]+;/, `src: url(/assets/fonts/${name}.woff2) format('woff2');`);
+    }
+  }
+}
+
+const css = fontCss + "\n" + tokensToCss() + "\n" + readFileSync(path.join(root, "src/shared/base.css"), "utf8");
 writeFileSync(path.join(dist, "assets/abu9.css"), css);
 writeFileSync(path.join(dist, "favicon.svg"), readFileSync(path.join(root, "src/shared/favicon.svg")));
 
@@ -55,8 +76,7 @@ for (const a of APPS) {
 <meta name="theme-color" content="${a.theme}">
 <title>${a.titleAr}</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@400;600;700&display=swap">
+<link rel="preload" href="/assets/fonts/ibm-plex-sans-arabic-arabic-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/abu9.css">
 </head>
 <body class="app-${a.name}">

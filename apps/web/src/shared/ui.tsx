@@ -76,11 +76,112 @@ export function ToastHost() {
       toastHost = null;
     };
   }, []);
-  return m ? (
-    <div className={`toast ${m.bad ? "bad" : ""}`} role="status" aria-live="polite">
-      {m.text}
-    </div>
-  ) : null;
+  return (
+    <>
+      {m && (
+        <div className={`toast ${m.bad ? "bad" : ""}`} role="status" aria-live="polite">
+          {m.text}
+        </div>
+      )}
+      <DialogHost />
+    </>
+  );
+}
+
+// ───────────────────────── dialogs (replace window.prompt/confirm) ─────────────────────────
+export interface AskOptions {
+  title: string;
+  label?: string;
+  initial?: string;
+  kind?: "text" | "textarea" | "number" | "confirm";
+  /** Radio choices: [value, label]. */
+  choices?: Array<[string, string]>;
+  minLength?: number;
+  min?: number;
+  max?: number;
+  confirmLabel?: string;
+  danger?: boolean;
+}
+type Pending = AskOptions & { resolve: (v: string | null) => void };
+let dialogHost: ((p: Pending) => void) | null = null;
+
+/** Promise-based accessible dialog. Resolves to the entered value, or null when cancelled. */
+export function ask(o: AskOptions): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!dialogHost) return resolve(null);
+    dialogHost({ ...o, resolve });
+  });
+}
+export const confirmDialog = (title: string, o: { label?: string; confirmLabel?: string; danger?: boolean } = {}) =>
+  ask({ title, kind: "confirm", ...o }).then((v) => v !== null);
+
+/** Ask for a required reason (sensitive actions are audited with the reason). */
+export function askReason(label = "يُسجل السبب في سجل التدقيق.", title = "سبب الإجراء"): Promise<string | null> {
+  return ask({ title, label, kind: "textarea", minLength: 3 }).then((r) => (r ? r.trim() : null));
+}
+
+function DialogHost() {
+  const [p, setP] = useState<Pending | null>(null);
+  const [v, setV] = useState("");
+  useEffect(() => {
+    dialogHost = (x) => {
+      setV(x.initial ?? x.choices?.[0]?.[0] ?? "");
+      setP(x);
+    };
+    return () => {
+      dialogHost = null;
+    };
+  }, []);
+  const close = useCallback((val: string | null) => {
+    setP((cur) => {
+      cur?.resolve(val);
+      return null;
+    });
+  }, []);
+  if (!p) return null;
+  const kind = p.kind ?? "text";
+  const trimmed = v.trim();
+  const num = Number(v);
+  const valid =
+    kind === "confirm" ||
+    (kind === "number" ? v !== "" && Number.isFinite(num) && (p.min === undefined || num >= p.min) && (p.max === undefined || num <= p.max) : trimmed.length >= (p.minLength ?? 1));
+  return (
+    <Sheet center label={p.title} onClose={() => close(null)}>
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (valid) close(kind === "confirm" ? "yes" : kind === "number" ? String(num) : trimmed);
+        }}
+      >
+        <h3>{p.title}</h3>
+        {p.label && <p className="small muted">{p.label}</p>}
+        {p.choices ? (
+          <div className="stack" role="radiogroup" aria-label={p.title} style={{ gap: 6 }}>
+            {p.choices.map(([val, label]) => (
+              <label key={val} className="row" style={{ gap: 8 }}>
+                <input type="radio" name="ask-choice" value={val} checked={v === val} onChange={() => setV(val)} />
+                {label}
+              </label>
+            ))}
+          </div>
+        ) : kind === "textarea" ? (
+          <textarea className="input" rows={3} autoFocus aria-label={p.title} value={v} onChange={(e) => setV(e.target.value)} />
+        ) : kind === "text" || kind === "number" ? (
+          <input className={`input ${kind === "number" ? "num" : ""}`} autoFocus aria-label={p.title} inputMode={kind === "number" ? "decimal" : undefined} value={v} onChange={(e) => setV(e.target.value)} />
+        ) : null}
+        {kind !== "confirm" && p.minLength && p.minLength > 1 && <span className="hint">{p.minLength} أحرف على الأقل</span>}
+        <div className="row" style={{ gap: 8 }}>
+          <button className={`btn ${p.danger ? "danger" : "primary"} grow`} disabled={!valid} autoFocus={kind === "confirm"}>
+            {p.confirmLabel ?? "تأكيد"}
+          </button>
+          <button type="button" className="btn ghost grow" onClick={() => close(null)}>
+            إلغاء
+          </button>
+        </div>
+      </form>
+    </Sheet>
+  );
 }
 
 // ───────────────────────── primitives ─────────────────────────
@@ -249,8 +350,8 @@ export function OtpLogin({ title, subtitle, demoPhones, dark }: { title: ReactNo
     setBusy(true);
     setErr(null);
     try {
-      const r = await post("/auth/otp/verify", { challengeId: ch!.challengeId, code });
-      session.set(r.token);
+      await post("/auth/otp/verify", { challengeId: ch!.challengeId, code, transport: "cookie" });
+      session.refresh();
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -349,7 +450,7 @@ export function DashShell({ sub, nav, route, children, foot }: { sub: string; na
         ))}
         <div className="foot stack" style={{ gap: 8 }}>
           {foot}
-          <button className="btn sm" onClick={() => { void post("/auth/logout").catch(() => null); session.set(null); }}>
+          <button className="btn sm" onClick={() => void session.logout()}>
             تسجيل الخروج
           </button>
         </div>
@@ -390,8 +491,65 @@ export function mount(App: () => ReactNode) {
   createRoot(document.getElementById("root")!).render(<App />);
 }
 
-/** Prompt for a required reason (sensitive actions are audited with the reason). */
-export function askReason(q = "سبب الإجراء (يُسجل في سجل التدقيق):"): string | null {
-  const r = window.prompt(q);
-  return r && r.trim().length >= 3 ? r.trim() : null;
+// ───────────────────────── staff MFA ─────────────────────────
+/** Blocks staff UIs until this session has passed TOTP (enrolment on first use). */
+export function MfaGate({ children }: { children: ReactNode }) {
+  const st = useQuery<{ required: boolean; verified: boolean; enrolled: boolean; devCode?: string }>("/auth/mfa");
+  const [enroll, setEnroll] = useState<{ secret: string; otpauthUri: string; devCode?: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const dev = enroll?.devCode ?? st.data?.devCode;
+    if (dev) setCode(dev);
+  }, [enroll, st.data]);
+  if (st.loading && !st.data) return <div className="login"><div className="panel"><Skeleton h={120} /></div></div>;
+  const s0 = st.data;
+  if (!s0 || !s0.required || s0.verified) return <>{children}</>;
+  const submit = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await post(s0.enrolled ? "/auth/mfa/verify" : "/auth/mfa/totp/activate", { code });
+      await st.reload();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="login" style={{ background: "var(--c-mist)" }}>
+      <div className="panel stack lg">
+        <div className="stack">
+          <h2>المصادقة الثنائية</h2>
+          <p className="muted">صلاحيات الموظفين لا تُفعّل إلا بعد التحقق برمز من تطبيق المصادقة مثل Google Authenticator أو 1Password.</p>
+        </div>
+        {!s0.enrolled && !enroll ? (
+          <button className="btn primary lg block" disabled={busy} onClick={async () => { setBusy(true); try { setEnroll(await post("/auth/mfa/totp/enroll")); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } }}>
+            إعداد تطبيق المصادقة
+          </button>
+        ) : (
+          <form className="stack" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+            {enroll && (
+              <div className="stack" style={{ gap: 6 }}>
+                <p className="small">أضف هذا المفتاح يدوياً في تطبيق المصادقة (نوع: حسب الوقت):</p>
+                <code className="num" dir="ltr" style={{ userSelect: "all", display: "block", textAlign: "center", letterSpacing: ".04em", padding: 10, background: "var(--c-paper)", borderRadius: 10 }}>{enroll.secret.replace(/(.{4})/g, "$1 ").trim()}</code>
+                <a className="xs" href={enroll.otpauthUri}>فتح في تطبيق المصادقة على هذا الجهاز</a>
+              </div>
+            )}
+            <div className="field">
+              <label htmlFor="totp">الرمز المكوّن من ٦ أرقام</label>
+              <input id="totp" className="input code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+              {(enroll?.devCode ?? s0.devCode) && <span className="hint">بيئة التطوير: الرمز معبأ تلقائياً.</span>}
+            </div>
+            {err && <p className="error-text">{err}</p>}
+            <button className="btn primary lg block" disabled={busy || code.length !== 6}>تحقق</button>
+          </form>
+        )}
+        {err && !enroll && s0.enrolled === false && <p className="error-text">{err}</p>}
+        <button type="button" className="btn ghost" onClick={() => void session.logout()}>تسجيل الخروج</button>
+      </div>
+    </div>
+  );
 }

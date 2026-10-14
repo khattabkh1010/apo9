@@ -75,7 +75,7 @@ function Upload() {
     if (!file || !menu) return;
     setBusy(true);
     try {
-      const up = await fetch("/api/v1/media/upload", { method: "POST", headers: { "content-type": file.type, authorization: `Bearer ${session.token}` }, body: file });
+      const up = await fetch("/api/v1/media/upload", { method: "POST", credentials: "same-origin", headers: { "content-type": file.type, ...session.csrfHeader() }, body: file });
       const upj = await up.json();
       if (!up.ok) throw new Error(upj.error?.message ?? "upload failed");
       await post("/creator/videos", { restaurantId: menu.restaurant.id, videoUrl: upj.url, captionAr: caption, itemIds: items });

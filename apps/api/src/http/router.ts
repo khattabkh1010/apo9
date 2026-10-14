@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { ZodError, type ZodType } from "zod";
 import { PgError } from "../../../../packages/db/src/pg.ts";
 import { log } from "../log.ts";
+import { RATE_RULES, SESSION_COOKIE, CSRF_COOKIE, appendSetCookie, parseCookies, serializeCookie, type RateLimiter } from "../security/http.ts";
 
 export class ApiError extends Error {
   status: number;
@@ -26,6 +27,11 @@ export interface Principal {
   userId: string;
   sessionId: string;
   roles: Array<{ role: string; scopeType: string; scopeId: string }>;
+  /** How the session token arrived. Cookie sessions must pass CSRF on unsafe methods. */
+  via?: "bearer" | "cookie";
+  csrfOk?: boolean;
+  /** Staff sessions must be MFA-verified before global (staff) permissions apply. */
+  mfa?: { required: boolean; verified: boolean };
 }
 
 export interface Ctx {
@@ -58,6 +64,9 @@ const MAX_BODY = 1_000_000;
 export class Router {
   routes: Route[] = [];
   authenticate: ((req: IncomingMessage) => Promise<Principal | null>) | null = null;
+  limiter: RateLimiter | null = null;
+  trustProxy = false;
+  secureCookies = false;
 
   add(method: string, path: string, handler: Handler): void {
     const keys: string[] = [];
@@ -71,6 +80,16 @@ export class Router {
   patch = (p: string, h: Handler) => this.add("PATCH", p, h);
   put = (p: string, h: Handler) => this.add("PUT", p, h);
   delete = (p: string, h: Handler) => this.add("DELETE", p, h);
+
+  /** Throws 429 when any matching rule for this key is exhausted. */
+  rateLimit(by: "ip" | "user", method: string, routePath: string, key: string): void {
+    if (!this.limiter) return;
+    for (const rule of RATE_RULES) {
+      if (rule.by !== by || !rule.match(method, routePath)) continue;
+      const retry = this.limiter.hit(`${rule.name}:${key}`, rule.limit, rule.windowSec);
+      if (retry > 0) throw new ApiError(429, "rate_limited", "طلبات كثيرة، حاول بعد قليل", { retryAfterSec: retry, rule: rule.name });
+    }
+  }
 
   match(method: string, pathname: string): { route: Route; params: Record<string, string> } | null {
     for (const r of this.routes) {
@@ -108,7 +127,7 @@ export class Router {
       params: found.params,
       query: url.searchParams,
       requestId,
-      ip: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "",
+      ip: clientIp(req, this.trustProxy),
       principal: null,
       rawBody,
       async body<T>(schema: ZodType<T>): Promise<T> {
@@ -127,7 +146,17 @@ export class Router {
     res.setHeader("x-request-id", requestId);
     let status = 200;
     try {
+      const method = req.method ?? "GET";
+      this.rateLimit("ip", method, found.route.path, ctx.ip);
       ctx.principal = this.authenticate ? await this.authenticate(req) : null;
+      if (!ctx.principal && parseCookies(req)[SESSION_COOKIE]) {
+        // Stale/revoked cookie: clear it so the web app falls back to the login screen cleanly.
+        for (const name of [SESSION_COOKIE, CSRF_COOKIE]) appendSetCookie(res, serializeCookie(name, "", { secure: this.secureCookies, sameSite: "Lax", maxAgeSec: 0 }));
+      }
+      this.rateLimit("user", method, found.route.path, ctx.principal?.userId ?? `ip:${ctx.ip}`);
+      if (ctx.principal?.via === "cookie" && !["GET", "HEAD", "OPTIONS"].includes(method) && !ctx.principal.csrfOk) {
+        throw forbidden("csrf_failed", "missing or invalid CSRF token");
+      }
       const result = await found.route.handler(ctx);
       if (ctx.handled) return true;
       status = result === undefined ? 204 : 200;
@@ -140,12 +169,21 @@ export class Router {
       const err = toApiError(e);
       status = err.status;
       if (status >= 500) log.error("request_failed", { requestId, path: url.pathname, error: (e as Error).stack ?? String(e) });
+      if (status === 429 && err.details && typeof err.details === "object" && "retryAfterSec" in err.details) res.setHeader("retry-after", String((err.details as { retryAfterSec: number }).retryAfterSec));
       send(res, status, { error: { code: err.code, message: err.message, details: err.details, requestId } });
     } finally {
       log.info("request", { requestId, method: req.method, path: found.route.path, status, ms: Math.round(performance.now() - started), user: ctx.principal?.userId });
     }
     return true;
   }
+}
+
+function clientIp(req: IncomingMessage, trustProxy: boolean): string {
+  if (trustProxy) {
+    const xff = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim();
+    if (xff) return xff;
+  }
+  return req.socket.remoteAddress ?? "";
 }
 
 function toApiError(e: unknown): ApiError {

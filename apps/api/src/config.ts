@@ -23,6 +23,17 @@ export const config = {
   paymentProvider: (env.PAYMENT_PROVIDER ?? "mock") as "mock",
   smsProvider: (env.SMS_PROVIDER ?? "mock") as "mock",
   sessionDays: Number(env.SESSION_DAYS ?? 30),
+  /** AES-256-GCM key material for TOTP secrets at rest. */
+  mfaEncryptionKey: secret("MFA_ENCRYPTION_KEY", "dev-only-mfa-key"),
+  /** Staff (ops/finance/admin) must pass TOTP before any staff permission applies. Always on in production. */
+  staffMfa: isProd || env.STAFF_MFA !== "0",
+  /** Dev only: include the current TOTP code in MFA challenge responses (like the OTP dev echo). Forced off in production. */
+  totpDevEcho: !isProd && env.OTP_DEV_ECHO !== "0",
+  /** Only trust X-Forwarded-For when running behind a known proxy/load balancer. */
+  trustProxy: env.TRUST_PROXY === "1",
+  rateLimit: env.RATE_LIMIT !== "0",
+  /** Cookies get the Secure flag in production (HTTPS only). */
+  secureCookies: isProd || env.SECURE_COOKIES === "1",
   jobsEnabled: env.JOBS_ENABLED !== "0",
   /** Demo courier movement simulator (development only). */
   simulateCouriers: !isProd && env.SIMULATE_COURIERS === "1",

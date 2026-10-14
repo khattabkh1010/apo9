@@ -1,6 +1,6 @@
 import { post } from "../shared/api.ts";
 import { date, sar, time } from "../shared/i18n.ts";
-import { askReason, Brand, DashShell, Empty, Kpis, Loadable, OtpLogin, PageHead, StatusBadge, ToastHost, mount, toast, useHashRoute, useQuery, useSession } from "../shared/ui.tsx";
+import { ask, askReason, Brand, DashShell, Empty, Kpis, Loadable, OtpLogin, PageHead, StatusBadge, ToastHost, mount, toast, useHashRoute, useQuery, useSession } from "../shared/ui.tsx";
 
 const DEMOS: Array<[string, string]> = [["مدير سهم للتوصيل", "0500000301"]];
 const NAV: Array<[string, string]> = [["overview", "الأداء والالتزامات"], ["couriers", "المناديب"], ["jobs", "الرحلات"], ["capacity", "طلبات السعة"], ["settlements", "التسويات والمطالبات"]];
@@ -81,7 +81,7 @@ function Couriers({ cid }: { cid: string }) {
       <Loadable q={q}>{(d) => (
         <div className="panel table-wrap"><table className="table"><thead><tr><th>المندوب</th><th>الجوال</th><th>المركبة</th><th>النوع</th><th>الحالة</th><th>الحمل</th><th>٧ أيام</th><th>التقييم</th><th /></tr></thead>
           <tbody>{d.couriers.map((c: any) => <tr key={c.id}><td>{c.display_name}</td><td className="num">{c.phone}</td><td>{c.vehicle_type}</td><td>{c.capacity_type === "committed" ? "ملتزمة" : "عند الطلب"}</td><td><StatusBadge s={c.status} /></td><td className="num">{c.load}/2</td><td className="num">{c.delivered_7d}</td><td className="num">{c.rating ?? "—"}</td>
-            <td>{c.status !== "suspended" && <button className="btn sm danger" onClick={async () => { const reason = askReason(); if (reason) await post(`/logistics/${cid}/couriers/${c.id}/status`, { status: "suspended", reason }).then(() => { toast("تم الإيقاف"); void q.reload(); }).catch((e) => toast(e.message, true)); }}>إيقاف</button>}</td></tr>)}</tbody></table></div>)}</Loadable>
+            <td>{c.status !== "suspended" && <button className="btn sm danger" onClick={async () => { const reason = await askReason(); if (reason) await post(`/logistics/${cid}/couriers/${c.id}/status`, { status: "suspended", reason }).then(() => { toast("تم الإيقاف"); void q.reload(); }).catch((e) => toast(e.message, true)); }}>إيقاف</button>}</td></tr>)}</tbody></table></div>)}</Loadable>
     </>
   );
 }
@@ -106,7 +106,7 @@ function Capacity({ cid }: { cid: string }) {
       <Loadable q={q}>{(d) => d.requests.length === 0 ? <Empty title="لا طلبات سعة حالياً" /> : (
         <div className="panel table-wrap"><table className="table"><thead><tr><th>المنطقة</th><th>الفترة</th><th>المطلوب</th><th>الملتزم</th><th>الحالة</th><th /></tr></thead>
           <tbody>{d.requests.map((r: any) => <tr key={r.id}><td>{r.zone_name}</td><td>{date(r.window_start)} {time(r.window_start)}–{time(r.window_end)}</td><td className="num">{r.requested_couriers}</td><td className="num">{r.committed_couriers ?? "—"}</td><td><StatusBadge s={r.status} /></td>
-            <td>{r.status === "open" && <button className="btn sm primary" onClick={async () => { const n = window.prompt("كم مندوب تلتزم به؟", String(r.requested_couriers)); if (n !== null) await post(`/logistics/${cid}/capacity-requests/${r.id}/respond`, { committedCouriers: Number(n) }).then(() => q.reload()).catch((e) => toast(e.message, true)); }}>الرد</button>}</td></tr>)}</tbody></table></div>)}</Loadable>
+            <td>{r.status === "open" && <button className="btn sm primary" onClick={async () => { const n = await ask({ title: "الالتزام بالسعة", label: `المطلوب: ${r.requested_couriers} مندوب`, kind: "number", initial: String(r.requested_couriers), min: 0, max: 500 }); if (n !== null) await post(`/logistics/${cid}/capacity-requests/${r.id}/respond`, { committedCouriers: Number(n) }).then(() => q.reload()).catch((e) => toast(e.message, true)); }}>الرد</button>}</td></tr>)}</tbody></table></div>)}</Loadable>
     </>
   );
 }
@@ -123,7 +123,7 @@ function Settlements({ cid }: { cid: string }) {
           <tbody>{d.settlements.length === 0 && <tr><td colSpan={7} className="muted">لا تسويات بعد</td></tr>}{d.settlements.map((x: any) => <tr key={x.id}><td>{date(x.period_start)}</td><td className="num">{x.order_count}</td><td className="num">{sar(x.gross)}</td><td className="num">{sar(x.deductions)}</td><td className="num">{sar(x.withheld_disputed)}</td><td className="num"><strong>{sar(x.net_payable)}</strong></td><td><StatusBadge s={x.status} /></td></tr>)}</tbody></table></div></>)}</Loadable>
       <Loadable q={c}>{(d) => (
         <section className="panel stack"><h3>المطالبات</h3>{d.claims.length === 0 && <p className="muted small">لا مطالبات</p>}
-          {d.claims.map((cl: any) => <div key={cl.id} className="row between small"><span>#<span className="num">{cl.number}</span> · {cl.reason_code} · <span className="num">{sar(cl.amount)}</span></span><span className="row" style={{ gap: 6 }}><StatusBadge s={cl.status} />{cl.status === "open" && <button className="btn sm" onClick={async () => { const note = window.prompt("سبب الاعتراض والدليل:"); if (note) await post(`/logistics/${cid}/claims/${cl.id}/dispute`, { note }).then(() => c.reload()).catch((e) => toast(e.message, true)); }}>اعتراض</button>}</span></div>)}</section>)}</Loadable>
+          {d.claims.map((cl: any) => <div key={cl.id} className="row between small"><span>#<span className="num">{cl.number}</span> · {cl.reason_code} · <span className="num">{sar(cl.amount)}</span></span><span className="row" style={{ gap: 6 }}><StatusBadge s={cl.status} />{cl.status === "open" && <button className="btn sm" onClick={async () => { const note = await ask({ title: "الاعتراض على المطالبة", label: "اذكر السبب والدليل (سجل التتبع، وقت الوصول…).", kind: "textarea", minLength: 10 }); if (note) await post(`/logistics/${cid}/claims/${cl.id}/dispute`, { note }).then(() => c.reload()).catch((e) => toast(e.message, true)); }}>اعتراض</button>}</span></div>)}</section>)}</Loadable>
     </>
   );
 }

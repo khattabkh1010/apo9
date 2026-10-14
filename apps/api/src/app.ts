@@ -16,6 +16,7 @@ import { creatorRoutes } from "./modules/creator.ts";
 import { plusRoutes } from "./modules/plus.ts";
 import { paymentRoutes } from "./modules/payments.ts";
 import { openApiDocument } from "./openapi/spec.ts";
+import { securityHeaders } from "./security/http.ts";
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json",
@@ -43,6 +44,9 @@ export function buildApp(db: Db, overrides: Partial<AppContext> = {}): { app: Ap
   const app = createAppContext(db, overrides);
   const router = new Router();
   router.authenticate = makeAuthenticator(app);
+  router.limiter = app.limiter;
+  router.trustProxy = config.trustProxy;
+  router.secureCookies = config.secureCookies;
 
   router.get("/healthz", async () => {
     await app.db.query("select 1");
@@ -62,10 +66,7 @@ export function buildApp(db: Db, overrides: Partial<AppContext> = {}): { app: Ap
   paymentRoutes(router, app);
 
   const server = createServer(async (req, res) => {
-    // Baseline security headers for every response.
-    res.setHeader("x-content-type-options", "nosniff");
-    res.setHeader("referrer-policy", "strict-origin-when-cross-origin");
-    res.setHeader("x-frame-options", "DENY");
+    securityHeaders(res, config.isProd);
     const url = new URL(req.url ?? "/", "http://localhost");
     try {
       if (url.pathname.startsWith("/api/") || url.pathname === "/healthz") {

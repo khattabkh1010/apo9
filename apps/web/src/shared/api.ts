@@ -1,4 +1,4 @@
-// Thin typed client for the ABU9 API. Session token lives in localStorage per app.
+// Thin typed client for the ABU9 API.
 export class ApiError extends Error {
   status: number;
   code: string;
@@ -11,7 +11,14 @@ export class ApiError extends Error {
   }
 }
 
-const KEY = "abu9.token";
+// Web sessions use an httpOnly cookie set by the server (JavaScript never sees the session token).
+// The readable `abu9_csrf` cookie signals "logged in" and is echoed in X-CSRF-Token on writes.
+const CSRF_COOKIE = "abu9_csrf";
+const readCookie = (name: string): string | null => {
+  const m = document.cookie.split("; ").find((c) => c.startsWith(name + "="));
+  return m ? decodeURIComponent(m.slice(name.length + 1)) : null;
+};
+
 const safe = {
   get(k: string): string | null {
     try {
@@ -25,26 +32,42 @@ const safe = {
       if (v === null) localStorage.removeItem(k);
       else localStorage.setItem(k, v);
     } catch {
-      /* storage unavailable (private mode) — session lasts for this tab only */
+      /* storage unavailable (private mode) — preference lasts for this tab only */
     }
   },
 };
 
-let memToken: string | null = safe.get(KEY);
+// Tokens from older builds lived in localStorage; drop them.
+safe.set("abu9.token", null);
+
+let csrf: string | null = readCookie(CSRF_COOKIE);
 const listeners = new Set<() => void>();
 
 export const session = {
+  /** Truthy while a session cookie is believed valid (the CSRF cookie exists). */
   get token() {
-    return memToken;
+    return csrf;
   },
-  set(token: string | null) {
-    memToken = token;
-    safe.set(KEY, token);
+  /** Re-read cookies after login/logout. */
+  refresh() {
+    csrf = readCookie(CSRF_COOKIE);
     listeners.forEach((l) => l());
+  },
+  /** Forget the local session (server-side revocation happens via POST /auth/logout). */
+  clear() {
+    document.cookie = `${CSRF_COOKIE}=; Max-Age=0; Path=/; SameSite=Strict`;
+    session.refresh();
+  },
+  async logout() {
+    await api("POST", "/auth/logout").catch(() => null);
+    session.clear();
   },
   subscribe(fn: () => void) {
     listeners.add(fn);
     return () => listeners.delete(fn);
+  },
+  csrfHeader(): Record<string, string> {
+    return csrf ? { "x-csrf-token": csrf } : {};
   },
   store: safe,
 };
@@ -52,10 +75,11 @@ export const session = {
 export async function api<T = any>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
   const res = await fetch(`/api/v1${path}`, {
     method,
-    headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...(memToken ? { authorization: `Bearer ${memToken}` } : {}), ...headers },
+    credentials: "same-origin",
+    headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...(method !== "GET" ? session.csrfHeader() : {}), ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (res.status === 401 && memToken) session.set(null);
+  if (res.status === 401 && csrf) session.clear();
   const text = await res.text();
   const json = text ? JSON.parse(text) : null;
   if (!res.ok) throw new ApiError(res.status, json?.error?.code ?? "error", json?.error?.message ?? res.statusText, json?.error?.details);

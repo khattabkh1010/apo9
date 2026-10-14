@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { post, session } from "../shared/api.ts";
 import { time, minutesUntil } from "../shared/i18n.ts";
-import { Brand, Empty, Icon, Loadable, OtpLogin, StatusBadge, ToastHost, mount, toast, useHashRoute, useQuery, useSession } from "../shared/ui.tsx";
+import { ask, confirmDialog, Brand, Empty, Icon, Loadable, OtpLogin, StatusBadge, ToastHost, mount, toast, useHashRoute, useQuery, useSession } from "../shared/ui.tsx";
 
 const DEMOS: Array<[string, string]> = [["عبدالله (سهم)", "0500000201"], ["ناصر (رواحل)", "0500000204"]];
 
@@ -67,9 +67,9 @@ function JobCard({ j, reload }: { j: any; reload: () => void }) {
         </button>
       )}
       <div className="row">
-        {j.status === "assigned" && <button className="btn sm grow" disabled={busy} onClick={() => { const r = window.confirm("رفض هذا الطلب؟ سيُعاد توزيعه على مندوب آخر."); if (r) void run("reject", { reason: "other" }); }}>رفض</button>}
+        {j.status === "assigned" && <button className="btn sm grow" disabled={busy} onClick={async () => { const r = await ask({ title: "رفض هذا الطلب؟", label: "سيُعاد توزيعه على مندوب آخر فوراً.", choices: [["too_far", "المسافة بعيدة"], ["vehicle_issue", "مشكلة في المركبة"], ["safety", "موقع غير آمن"], ["other", "سبب آخر"]], confirmLabel: "رفض", danger: true }); if (r) void run("reject", { reason: r }); }}>رفض</button>}
         {(j.status === "picked_up" || j.status === "at_dropoff") && (
-          <button className="btn sm danger grow" disabled={busy} onClick={() => { const r = window.prompt("سبب تعذّر التسليم:"); if (r) void run("fail", { reason: r }); }}>تعذّر التسليم</button>
+          <button className="btn sm danger grow" disabled={busy} onClick={async () => { const r = await ask({ title: "تعذّر التسليم", label: "صف ما حدث (العميل لا يرد، العنوان غير صحيح…). يُراجع مركز العمليات الحالة.", kind: "textarea", minLength: 5, confirmLabel: "تأكيد تعذّر التسليم", danger: true }); if (r) void run("fail", { reason: r }); }}>تعذّر التسليم</button>
         )}
       </div>
     </section>
@@ -155,10 +155,10 @@ function Inner({ route, go }: { route: string; go: (r: string) => void }) {
           }
         </Loadable>
         <button className="btn sm ghost" onClick={async () => {
-          const desc = window.prompt("صف المشكلة (حادث، عطل، موقع غير آمن…):");
+          const desc = await ask({ title: "إبلاغ عن مشكلة", label: "صف المشكلة (حادث، عطل، موقع غير آمن…). يصل البلاغ لمركز العمليات فوراً.", kind: "textarea", minLength: 5, confirmLabel: "إرسال البلاغ" });
           if (desc) await post("/courier/incidents", { kind: "other", description: desc, severity: "high" }).then(() => toast("تم إبلاغ مركز العمليات")).catch((e) => toast(e.message, true));
         }}>إبلاغ عن مشكلة</button>
-        <button className="btn sm ghost" onClick={() => session.set(null)}>تسجيل الخروج</button>
+        <button className="btn sm ghost" onClick={async () => { if (await confirmDialog("تسجيل الخروج؟")) void session.logout(); }}>تسجيل الخروج</button>
       </div>
       <ToastHost />
     </div>

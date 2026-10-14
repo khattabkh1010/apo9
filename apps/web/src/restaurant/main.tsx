@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { patch, post } from "../shared/api.ts";
 import { date, sar, time, minutesUntil } from "../shared/i18n.ts";
-import { DashShell, Empty, Kpis, Loadable, OtpLogin, PageHead, Brand, Sheet, StatusBadge, ToastHost, mount, toast, useHashRoute, useQuery, useSession } from "../shared/ui.tsx";
+import { ask, DashShell, Empty, Kpis, Loadable, OtpLogin, PageHead, Brand, Sheet, StatusBadge, ToastHost, mount, toast, useHashRoute, useQuery, useSession } from "../shared/ui.tsx";
 
 const DEMOS: Array<[string, string]> = [["مالك برجر نجد", "0500000101"], ["مالك مشاوي الديرة", "0500000102"]];
 const NAV: Array<[string, string]> = [["orders", "الطلبات الحية"], ["menu", "المنيو والتوفر"], ["analytics", "الأداء"], ["content", "الفيديوهات"], ["promotions", "العروض"], ["billing", "الباقة والفواتير"], ["settlements", "التسويات والمطالبات"]];
@@ -90,7 +90,7 @@ function Orders({ rid }: { rid: string }) {
                         <div className="row" style={{ marginTop: 10 }}>
                           {o.status === "placed" && (<>
                             <button className="btn primary grow" onClick={() => setAccepting(o)}>قبول</button>
-                            <button className="btn danger" onClick={() => { const reason = window.prompt("سبب الرفض: too_busy / item_unavailable / closing / other", "too_busy"); if (reason) void act(() => post(`/restaurant/${rid}/orders/${o.id}/reject`, { reason }), "تم رفض الطلب"); }}>رفض</button>
+                            <button className="btn danger" onClick={async () => { const reason = await ask({ title: "سبب رفض الطلب", label: "يُبلّغ العميل ويُسترد المبلغ كاملاً.", choices: [["too_busy", "ضغط عالٍ في المطبخ"], ["item_unavailable", "صنف غير متوفر"], ["closing", "قرب الإغلاق"], ["other", "سبب آخر"]], confirmLabel: "رفض الطلب", danger: true }); if (reason) void act(() => post(`/restaurant/${rid}/orders/${o.id}/reject`, { reason }), "تم رفض الطلب"); }}>رفض</button>
                           </>)}
                           {(o.status === "preparing" || o.status === "accepted") && <button className="btn dark grow" onClick={() => void act(() => post(`/restaurant/${rid}/orders/${o.id}/ready`), "الطلب جاهز")}>الطلب جاهز</button>}
                           {o.status === "ready_for_pickup" && <StatusBadge s={o.delivery?.status ?? "ready_for_pickup"} />}
@@ -410,7 +410,7 @@ function Settlements({ rid }: { rid: string }) {
                 <span>#<span className="num">{cl.number}</span> · {cl.reason_code} · <span className="num">{sar(cl.amount)}</span>{cl.deductible_after && <span className="muted"> · المهلة حتى {date(cl.deductible_after)} {time(cl.deductible_after)}</span>}</span>
                 <span className="row" style={{ gap: 8 }}>
                   <StatusBadge s={cl.status} />
-                  {cl.status === "open" && <button className="btn sm" onClick={async () => { const note = window.prompt("سبب الاعتراض والدليل:"); if (note) await post(`/restaurant/${rid}/claims/${cl.id}/dispute`, { note }).then(() => c.reload()).catch((e) => toast(e.message, true)); }}>اعتراض</button>}
+                  {cl.status === "open" && <button className="btn sm" onClick={async () => { const note = await ask({ title: "الاعتراض على المطالبة", label: "اذكر السبب والدليل (رقم الفاتورة، وقت التجهيز…).", kind: "textarea", minLength: 10 }); if (note) await post(`/restaurant/${rid}/claims/${cl.id}/dispute`, { note }).then(() => c.reload()).catch((e) => toast(e.message, true)); }}>اعتراض</button>}
                 </span>
               </div>
             ))}

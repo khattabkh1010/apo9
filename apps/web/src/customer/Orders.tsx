@@ -56,7 +56,8 @@ export function OrderTracking({ id, go }: { id: string; go: (r: string) => void 
   const [help, setHelp] = useState(false);
   useEffect(() => {
     if (!session.token) return;
-    const es = new EventSource(`/api/v1/orders/${id}/stream?access_token=${encodeURIComponent(session.token)}`);
+    // Same-origin EventSource sends the httpOnly session cookie; no token in the URL.
+    const es = new EventSource(`/api/v1/orders/${id}/stream`);
     es.addEventListener("update", () => void q.reload());
     return () => es.close();
   }, [id]);

@@ -4,6 +4,7 @@ import { migrate } from "../../../packages/db/src/migrate.ts";
 import { seed, DEMO_PHONES } from "../../../packages/db/src/seed.ts";
 import { buildApp } from "../src/app.ts";
 import type { AppContext } from "../src/context.ts";
+import { currentStep, totpAt } from "../src/security/totp.ts";
 
 export { DEMO_PHONES };
 
@@ -40,6 +41,7 @@ export async function startTestServer(): Promise<TestServer> {
 
 export class Client {
   token: string | null = null;
+  totpSecret: string | null = null;
   base: string;
   constructor(base: string) {
     this.base = base;
@@ -61,6 +63,19 @@ export class Client {
     const r2 = await this.post("/api/v1/auth/otp/verify", { challengeId: r1.body.challengeId, code: r1.body.devCode });
     if (r2.status !== 201) throw new Error(`otp verify failed: ${JSON.stringify(r2.body)}`);
     this.token = r2.body.token;
+    // Staff accounts must complete TOTP before staff permissions apply (enrol on first login).
+    const mfa = await this.get("/api/v1/auth/mfa");
+    if (mfa.body.required && !mfa.body.verified) {
+      if (!mfa.body.enrolled) {
+        const en = await this.post("/api/v1/auth/mfa/totp/enroll");
+        this.totpSecret = en.body.secret;
+        const act = await this.post("/api/v1/auth/mfa/totp/activate", { code: totpAt(en.body.secret, currentStep()) });
+        if (act.status !== 200) throw new Error(`mfa activate failed: ${JSON.stringify(act.body)}`);
+      } else {
+        const v = await this.post("/api/v1/auth/mfa/verify", { code: mfa.body.devCode });
+        if (v.status !== 200) throw new Error(`mfa verify failed: ${JSON.stringify(v.body)}`);
+      }
+    }
     return this;
   }
 }

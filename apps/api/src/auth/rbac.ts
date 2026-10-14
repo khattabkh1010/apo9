@@ -42,6 +42,8 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
 
 export function permissionsOf(p: Principal): Set<Permission> {
   const s = new Set<Permission>();
+  // Staff permissions only apply once this session has passed the second factor.
+  if (p.mfa?.required && !p.mfa.verified) return s;
   for (const r of p.roles) if (r.scopeType === "global") for (const perm of ROLE_PERMISSIONS[r.role] ?? []) s.add(perm);
   return s;
 }
@@ -57,6 +59,7 @@ export function hasPermission(p: Principal | null, perm: Permission): boolean {
 
 export function requirePermission(ctx: Ctx, perm: Permission): Principal {
   const p = requireUser(ctx);
+  if (p.mfa?.required && !p.mfa.verified) throw forbidden("mfa_required", "المصادقة الثنائية مطلوبة");
   if (!permissionsOf(p).has(perm)) throw forbidden("missing_permission", `requires ${perm}`);
   return p;
 }

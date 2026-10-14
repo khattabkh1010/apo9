@@ -3,28 +3,44 @@
 import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.PLAYWRIGHT_PATH ?? "/opt/npm-tools/node_modules/playwright");
+const { chromium } = require(process.env.PLAYWRIGHT_PATH ?? "/opt/node-tools/node_modules/playwright");
 
 const BASE = process.env.BASE ?? "http://127.0.0.1:8080";
 const OUT = process.argv[2] ?? "docs/screenshots";
 mkdirSync(OUT, { recursive: true });
 
+// One cookie session per user, used by both the API setup calls and the browser (as the web apps do).
 async function login(phone) {
   const r1 = await (await fetch(`${BASE}/api/v1/auth/otp/request`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone }) })).json();
-  const r2 = await (await fetch(`${BASE}/api/v1/auth/otp/verify`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId: r1.challengeId, code: r1.devCode }) })).json();
-  return r2.token;
+  const res = await fetch(`${BASE}/api/v1/auth/otp/verify`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challengeId: r1.challengeId, code: r1.devCode, transport: "cookie" }) });
+  const cookies = Object.fromEntries(res.headers.getSetCookie().map((c) => c.split(";")[0].split("=")).map(([k, v]) => [k, decodeURIComponent(v)]));
+  const sess = { session: cookies.abu9_session, csrf: cookies.abu9_csrf };
+  // Staff: pass TOTP (dev echo) so staff permissions apply to this session.
+  const call = api(sess);
+  const m = await call("GET", "/auth/mfa");
+  if (m.required && !m.verified) {
+    if (m.enrolled) await call("POST", "/auth/mfa/verify", { code: m.devCode });
+    else await call("POST", "/auth/mfa/totp/activate", { code: (await call("POST", "/auth/mfa/totp/enroll")).devCode });
+  }
+  return sess;
 }
-const api = (token) => async (method, path, body, headers = {}) => {
-  const r = await fetch(`${BASE}/api/v1${path}`, { method, headers: { "content-type": "application/json", authorization: `Bearer ${token}`, ...headers }, body: body ? JSON.stringify(body) : undefined });
+const api = (sess) => async (method, path, body, headers = {}) => {
+  const r = await fetch(`${BASE}/api/v1${path}`, { method, headers: { "content-type": "application/json", cookie: `abu9_session=${encodeURIComponent(sess.session)}; abu9_csrf=${encodeURIComponent(sess.csrf)}`, "x-csrf-token": sess.csrf, ...headers }, body: body ? JSON.stringify(body) : undefined });
   const t = await r.text();
   if (!r.ok) throw new Error(`${method} ${path} ${r.status} ${t}`);
   return t ? JSON.parse(t) : null;
 };
 
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+const browser = await chromium.launch({ executablePath: process.env.CHROME ?? "/opt/pw-browsers/chromium" });
 async function shot(name, url, token, { mobile = false, wait = 900, before } = {}) {
   const ctx = await browser.newContext(mobile ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true } : { viewport: { width: 1360, height: 900 }, deviceScaleFactor: 1 });
-  if (token) await ctx.addInitScript((t) => localStorage.setItem("abu9.token", t), token);
+  if (token) {
+    const url = new URL(BASE);
+    await ctx.addCookies([
+      { name: "abu9_session", value: token.session, domain: url.hostname, path: "/api", httpOnly: true, sameSite: "Lax" },
+      { name: "abu9_csrf", value: token.csrf, domain: url.hostname, path: "/", sameSite: "Strict" },
+    ]);
+  }
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { patch, post, put } from "../shared/api.ts";
 import { date, sar, time } from "../shared/i18n.ts";
-import { askReason, Brand, DashShell, Empty, Kpis, Loadable, OtpLogin, PageHead, StatusBadge, ToastHost, mount, toast, useHashRoute, useQuery, useSession } from "../shared/ui.tsx";
+import { ask, askReason, Brand, DashShell, Empty, Kpis, Loadable, MfaGate, OtpLogin, PageHead, StatusBadge, ToastHost, mount, toast, useHashRoute, useQuery, useSession } from "../shared/ui.tsx";
 
 const DEMOS: Array<[string, string]> = [["مشرف العمليات", "0500000901"], ["المالية", "0500000902"]];
 const NAV: Array<[string, string]> = [
@@ -18,7 +18,7 @@ function App() {
     overview: <Overview />, orders: arg ? <OrderDetail id={arg} /> : <Orders />, dispatch: <Dispatch />, support: <Support />, content: <ContentPage />,
     finance: <Finance />, settlements: <Settlements />, growth: <Growth />, config: <Config />, partners: <Partners />, audit: <Audit />,
   };
-  return <DashShell sub="مركز العمليات · الرياض" nav={NAV} route={route}>{pages[head!] ?? <Overview />}</DashShell>;
+  return <MfaGate><DashShell sub="مركز العمليات · الرياض" nav={NAV} route={route}>{pages[head!] ?? <Overview />}</DashShell><ToastHost /></MfaGate>;
 }
 
 const act = async (fn: () => Promise<unknown>, ok: string, after?: () => unknown) => {
@@ -117,8 +117,8 @@ function Orders() {
 
 function OrderDetail({ id }: { id: string }) {
   const q = useQuery(`/admin/orders/${id}`);
-  const intervene = (action: string) => {
-    const reason = askReason();
+  const intervene = async (action: string) => {
+    const reason = await askReason();
     if (!reason) return;
     void act(() => post(`/admin/orders/${id}/intervene`, { action, reason, ...(action === "accept" ? { prepMinutes: 15 } : {}) }), "تم", q.reload);
   };
@@ -194,10 +194,10 @@ function Dispatch() {
                   <div className="xs muted">الموعد <span className="num">{time(j.promised_by)}</span> · جاهز <span className="num">{time(j.ready_at)}</span> · {j.zone}{j.batched_with_job_id && " · مجمّع"}</div>
                   {j.status === "unassigned" && j.last_rejections && <div className="xs" style={{ direction: "ltr", textAlign: "start" }}>{j.last_rejections.map((r: any) => r.reason).join(" · ")}</div>}
                   <div className="row">
-                    <select className="input" style={{ minHeight: 34, padding: "4px 8px" }} defaultValue="" onChange={(e) => {
+                    <select className="input" style={{ minHeight: 34, padding: "4px 8px" }} defaultValue="" onChange={async (e) => {
                       const courierId = e.target.value;
                       if (!courierId) return;
-                      const reason = askReason();
+                      const reason = await askReason();
                       if (!reason) return;
                       void act(() => post(`/admin/dispatch/jobs/${j.id}/assign`, { courierId, reason }), "تم الإسناد يدوياً", q.reload);
                     }}>
@@ -228,12 +228,12 @@ function Support() {
   const c = useQuery("/admin/claims");
   const inc = useQuery("/admin/incidents");
   const fraud = useQuery("/admin/fraud");
-  const resolve = (tk: any) => {
-    const fault = window.prompt("الجهة المسؤولة: abu9 / restaurant / logistics / customer / external", "restaurant");
+  const resolve = async (tk: any) => {
+    const fault = await ask({ title: "الجهة المسؤولة عن المشكلة", choices: [["restaurant", "المطعم"], ["logistics", "شركة التوصيل"], ["abu9", "أبو9"], ["customer", "العميل"], ["external", "ظرف خارجي"]] });
     if (!fault) return;
-    const amt = window.prompt(`مبلغ الاسترداد بالريال (حتى ${(tk.total / 100).toFixed(2)})`, "0");
+    const amt = await ask({ title: "مبلغ الاسترداد (ريال)", label: `من 0 حتى ${(tk.total / 100).toFixed(2)} — 0 يعني بدون استرداد`, kind: "number", initial: "0", min: 0, max: tk.total / 100 });
     if (amt === null) return;
-    const note = askReason("ملخص الأدلة والقرار:");
+    const note = await askReason("يُحفظ مع التذكرة وفي سجل التدقيق.", "ملخص الأدلة والقرار");
     if (!note) return;
     void act(() => post(`/admin/tickets/${tk.id}/resolve`, { faultParty: fault, refundAmount: Math.round(Number(amt) * 100), note }), "تم حل التذكرة", t.reload);
   };
@@ -250,8 +250,8 @@ function Support() {
           <section className="panel table-wrap"><h3>مطالبات التعويض من الشركاء</h3>
             <table className="table"><thead><tr><th>#</th><th>الطرف</th><th>السبب</th><th>المبلغ</th><th>قابل للخصم بعد</th><th>الحالة</th><th /></tr></thead>
               <tbody>{d.claims.map((cl: any) => <tr key={cl.id}><td className="num">{cl.number}</td><td>{cl.party_type}</td><td>{cl.reason_code}{cl.dispute_note && <div className="xs muted">اعتراض: {cl.dispute_note}</div>}</td><td className="num">{sar(cl.amount)}</td><td className="num">{date(cl.deductible_after)}</td><td><StatusBadge s={cl.status} /></td><td>{["open", "disputed"].includes(cl.status) && <span className="row" style={{ gap: 4 }}>
-                <button className="btn sm" onClick={() => { const r = askReason(); if (r) void act(() => post(`/admin/claims/${cl.id}/decide`, { accept: true, reason: r }), "قُبلت المطالبة", c.reload); }}>قبول</button>
-                <button className="btn sm ghost" onClick={() => { const r = askReason(); if (r) void act(() => post(`/admin/claims/${cl.id}/decide`, { accept: false, reason: r }), "تتحملها أبو9", c.reload); }}>تتحملها أبو9</button></span>}</td></tr>)}</tbody>
+                <button className="btn sm" onClick={async () => { const r = await askReason(); if (r) void act(() => post(`/admin/claims/${cl.id}/decide`, { accept: true, reason: r }), "قُبلت المطالبة", c.reload); }}>قبول</button>
+                <button className="btn sm ghost" onClick={async () => { const r = await askReason(); if (r) void act(() => post(`/admin/claims/${cl.id}/decide`, { accept: false, reason: r }), "تتحملها أبو9", c.reload); }}>تتحملها أبو9</button></span>}</td></tr>)}</tbody>
             </table></section>)}</Loadable>
         <div className="cols">
           <Loadable q={inc}>{(d) => (<section className="panel stack"><h3>البلاغات الميدانية</h3>{d.incidents.length === 0 && <p className="muted small">لا بلاغات</p>}{d.incidents.map((i: any) => <div key={i.id} className="row between small"><span>{i.kind} {i.number && <>· #<span className="num">{i.number}</span></>}<div className="xs muted">{i.description}</div></span><span className="row" style={{ gap: 4 }}><span className={`badge ${i.severity === "high" || i.severity === "critical" ? "bad" : ""}`}>{i.severity}</span>{i.status !== "resolved" && <button className="btn sm" onClick={() => void act(() => post(`/admin/incidents/${i.id}/status`, { status: "resolved" }), "أُغلق البلاغ", inc.reload)}>إغلاق</button>}</span></div>)}</section>)}</Loadable>
@@ -280,7 +280,7 @@ function ContentPage() {
                 <strong>{x.restaurant}</strong><span>{x.caption_ar}</span>
                 <span className="small muted">{x.creator_handle ? `@${x.creator_handle}` : "رفعه المطعم"} · الأصناف: {(x.items ?? []).join("، ")}</span>
                 <div className="row"><button className="btn sm primary" onClick={() => void act(() => post(`/admin/moderation/videos/${x.id}`, { decision: "approved" }), "تمت الموافقة", v.reload)}>موافقة</button>
-                  <button className="btn sm danger" onClick={() => { const reason = askReason("سبب الرفض (يظهر للناشر):"); if (reason) void act(() => post(`/admin/moderation/videos/${x.id}`, { decision: "rejected", reason }), "تم الرفض", v.reload); }}>رفض</button></div>
+                  <button className="btn sm danger" onClick={async () => { const reason = await askReason("يظهر السبب للناشر.", "سبب الرفض"); if (reason) void act(() => post(`/admin/moderation/videos/${x.id}`, { decision: "rejected", reason }), "تم الرفض", v.reload); }}>رفض</button></div>
               </div>
             </div>
           ))}
@@ -336,7 +336,7 @@ function Settlements() {
           <tbody>{d.settlements.map((s: any) => (
             <tr key={s.id}><td>{s.party_name}<div className="xs muted">{s.party_type === "restaurant" ? "مطعم" : "توصيل"}</div></td><td>{date(s.period_start)} – {date(s.period_end)}</td><td className="num">{sar(s.gross)}</td><td className="num">{sar(s.deductions)}</td><td className="num">{sar(s.withheld_disputed)}</td><td className="num"><strong>{sar(s.net_payable)}</strong></td><td><StatusBadge s={s.status} /></td>
               <td>{s.status === "draft" && <button className="btn sm" onClick={() => void act(() => post(`/admin/settlements/${s.id}/approve`), "اعتُمدت", q.reload)}>اعتماد</button>}
-                {s.status === "approved" && <button className="btn sm primary" onClick={() => { const ref = window.prompt("مرجع التحويل البنكي:"); if (ref) void act(() => post(`/admin/settlements/${s.id}/paid`, { payoutRef: ref }), "سُجل الدفع", q.reload); }}>تسجيل الدفع</button>}</td></tr>))}</tbody></table></div>)}</Loadable>
+                {s.status === "approved" && <button className="btn sm primary" onClick={async () => { const ref = await ask({ title: "مرجع التحويل البنكي", label: "رقم مرجع التحويل من البنك (يُسجل في القيد والتدقيق).", minLength: 4 }); if (ref) void act(() => post(`/admin/settlements/${s.id}/paid`, { payoutRef: ref }), "سُجل الدفع", q.reload); }}>تسجيل الدفع</button>}</td></tr>))}</tbody></table></div>)}</Loadable>
     </>
   );
 }
@@ -354,14 +354,14 @@ function Growth() {
             <table className="table"><thead><tr><th>الخيار</th><th>المشتركون</th><th>فعّال</th><th>استخدامات الميزة</th><th>تكلفة الميزة</th><th>الوزن</th><th /></tr></thead>
               <tbody>{d.plusExperiment.map((v: any) => { const meta = d.plusVariants.find((x: any) => x.id === v.id); return (
                 <tr key={v.id}><td className="num">{v.label}</td><td className="num">{v.subscribers}</td><td className="num">{v.active}</td><td className="num">{v.benefit_uses}</td><td className="num">{sar(v.benefit_cost)}</td><td className="num">{meta?.weight}</td>
-                  <td><button className="btn sm" onClick={() => { const w = window.prompt("الوزن الجديد (0 لإيقاف هذا الخيار):", String(meta?.weight ?? 1)); const reason = w !== null ? askReason() : null; if (w !== null && reason) void act(() => patch(`/admin/plus-variants/${v.id}`, { weight: Number(w), reason }), "تم", s.reload); }}>تعديل الوزن</button></td></tr>); })}</tbody></table>
+                  <td><button className="btn sm" onClick={async () => { const w = await ask({ title: "وزن خيار السعر", label: "0 يوقف إسناد هذا الخيار للمشتركين الجدد.", kind: "number", initial: String(meta?.weight ?? 1), min: 0, max: 100 }); const reason = w !== null ? await askReason() : null; if (w !== null && reason) void act(() => patch(`/admin/plus-variants/${v.id}`, { weight: Number(w), reason }), "تم", s.reload); }}>تعديل الوزن</button></td></tr>); })}</tbody></table>
           </section>)}</Loadable>
         <Loadable q={p}>{(d) => (
           <section className="panel table-wrap"><h3>العروض <span className="small muted">· نقاط قائمة <span className="num">{d.pointsOutstanding.points}</span></span></h3>
             <table className="table"><thead><tr><th>الكود</th><th>المطعم</th><th>التمويل أبو9/مطعم</th><th>الصرف / الميزانية</th><th>الاستخدامات</th><th>الحالة</th><th /></tr></thead>
               <tbody>{d.promotions.map((x: any) => (
                 <tr key={x.id}><td className="num">{x.code}<div className="xs muted">{x.title_ar}</div></td><td>{x.restaurant ?? "كل المطاعم"}</td><td className="num">{x.abu9_share_bps / 100}٪ / {x.restaurant_share_bps / 100}٪</td><td className="num">{sar(x.spent)} / {sar(x.budget)}</td><td className="num">{x.redemptions}</td><td><StatusBadge s={x.active ? "active" : "paused"} /></td>
-                  <td><button className="btn sm" onClick={() => { const reason = askReason(); if (reason) void act(() => patch(`/admin/promotions/${x.id}`, { active: !x.active, reason }), "تم", p.reload); }}>{x.active ? "إيقاف" : "تفعيل"}</button></td></tr>))}</tbody></table>
+                  <td><button className="btn sm" onClick={async () => { const reason = await askReason(); if (reason) void act(() => patch(`/admin/promotions/${x.id}`, { active: !x.active, reason }), "تم", p.reload); }}>{x.active ? "إيقاف" : "تفعيل"}</button></td></tr>))}</tbody></table>
             <h3 style={{ marginTop: 16 }}>حملات النقاط</h3>
             {d.loyaltyCampaigns.map((c: any) => <div key={c.id} className="small row between"><span>{c.name} · {c.restaurant}</span><span className="num">{sar(c.spent)} / {sar(c.budget)} · ×{c.multiplier}</span><StatusBadge s={c.status} /></div>)}
           </section>)}</Loadable>
@@ -375,10 +375,10 @@ function Config() {
   const z = useQuery("/admin/zones");
   const s = useQuery("/admin/settings");
   const batching = s.data?.settings.find((x: any) => x.key === "batching")?.value;
-  const editBatching = () => {
-    const det = window.prompt("أقصى انحراف (كم):", String(batching.maxDetourKm));
-    const del = det !== null ? window.prompt("أقصى تأخير مضاف (دقيقة):", String(batching.maxAddedDelayMin)) : null;
-    const reason = del !== null ? askReason() : null;
+  const editBatching = async () => {
+    const det = await ask({ title: "أقصى انحراف للتجميع (كم)", kind: "number", initial: String(batching.maxDetourKm), min: 0, max: 10 });
+    const del = det !== null ? await ask({ title: "أقصى تأخير مضاف (دقيقة)", kind: "number", initial: String(batching.maxAddedDelayMin), min: 0, max: 30 }) : null;
+    const reason = del !== null ? await askReason() : null;
     if (det !== null && del !== null && reason) void act(() => put("/admin/settings/batching", { value: { ...batching, maxDetourKm: Number(det), maxAddedDelayMin: Number(del) }, reason }), "تم الحفظ", s.reload);
   };
   return (
@@ -390,7 +390,7 @@ function Config() {
             <section className="panel table-wrap"><h3>المناطق</h3>
               <table className="table"><thead><tr><th>المنطقة</th><th>الحالة</th><th>الموعد (دقيقة)</th><th /></tr></thead>
                 <tbody>{d.zones.map((x: any) => <tr key={x.id}><td>{x.name_ar} <span className="num muted">{x.code}</span></td><td><StatusBadge s={x.status} /></td><td className="num">{x.sla_minutes}</td>
-                  <td className="row" style={{ gap: 4 }}>{["active", "restricted", "paused"].filter((st) => st !== x.status).map((st) => <button key={st} className="btn sm" onClick={() => { const reason = askReason(); if (reason) void act(() => patch(`/admin/zones/${x.id}`, { status: st, reason }), "تم", z.reload); }}><StatusBadge s={st} /></button>)}</td></tr>)}</tbody></table>
+                  <td className="row" style={{ gap: 4 }}>{["active", "restricted", "paused"].filter((st) => st !== x.status).map((st) => <button key={st} className="btn sm" onClick={async () => { const reason = await askReason(); if (reason) void act(() => patch(`/admin/zones/${x.id}`, { status: st, reason }), "تم", z.reload); }}><StatusBadge s={st} /></button>)}</td></tr>)}</tbody></table>
             </section>
             <section className="panel table-wrap"><h3>قواعد التغطية لكل فرع</h3>
               <table className="table"><thead><tr><th>الفرع</th><th>المنطقة</th><th>أقصى مسافة طريق</th><th>أقصى وقت</th><th>مفعّلة</th></tr></thead>

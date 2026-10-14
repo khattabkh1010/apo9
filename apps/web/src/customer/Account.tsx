@@ -68,7 +68,7 @@ function AccountInner({ go, locale }: { go: (r: string) => void; locale: string 
             <button className="chip" aria-pressed={locale === "en"} onClick={() => setLocale("en")}>English</button>
           </div>
         </section>
-        <button className="btn danger" onClick={() => { void post("/auth/logout").catch(() => null); session.set(null); }}>{t("تسجيل الخروج")}</button>
+        <button className="btn danger" onClick={() => void session.logout()}>{t("تسجيل الخروج")}</button>
       </div>
     </>
   );
