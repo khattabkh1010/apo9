@@ -1,10 +1,8 @@
 # ABU9 API + web apps (single image; the API serves the built web apps and media).
-# NOTE: no package-lock.json yet (the build sandbox had no registry access). Run `npm install`
-# once with registry access, commit the lockfile, then switch `npm install` → `npm ci` below.
 FROM node:22-alpine AS build
 WORKDIR /app
-COPY package.json ./
-RUN npm install --no-audit --no-fund
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run typecheck && node apps/web/build.ts
 
