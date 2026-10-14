@@ -6,6 +6,7 @@ import { Checkout } from "./Checkout.tsx";
 import { OrderTracking, OrdersList } from "./Orders.tsx";
 import { Account, PlusPage } from "./Account.tsx";
 import { cartCount, useCart } from "./cart.ts";
+import { Favorites, GroupPage, Notifications } from "./Extras.tsx";
 
 function App() {
   useLocale();
@@ -13,7 +14,7 @@ function App() {
   const [route, go] = useHashRoute("feed");
   const cart = useCart();
   const [head, arg] = route.split("/");
-  const needsAuth = ["orders", "o", "plus"].includes(head!);
+  const needsAuth = ["orders", "o", "plus", "favorites", "notifications", "g"].includes(head!);
   let screen;
   if (needsAuth && !authed) screen = <Account go={go} />;
   else if (head === "restaurants") screen = <Restaurants go={go} />;
@@ -23,9 +24,12 @@ function App() {
   else if (head === "o" && arg) screen = <OrderTracking id={arg} go={go} />;
   else if (head === "account") screen = <Account go={go} />;
   else if (head === "plus") screen = <PlusPage go={go} />;
+  else if (head === "favorites") screen = <Favorites go={go} />;
+  else if (head === "notifications") screen = <Notifications go={go} />;
+  else if (head === "g" && arg) screen = <GroupPage code={arg} go={go} />;
   else screen = <Feed go={go} />;
 
-  const tab = head === "r" ? "restaurants" : head === "o" ? "orders" : head === "plus" ? "account" : head;
+  const tab = head === "r" ? "restaurants" : head === "o" ? "orders" : ["plus", "favorites", "notifications"].includes(head!) ? "account" : head === "g" ? "cart" : head;
   const dark = head === "feed" || !head;
   const tabs: Array<[string, string, (typeof Icon)[keyof typeof Icon]]> = [
     ["feed", t("اكتشف"), Icon.play],

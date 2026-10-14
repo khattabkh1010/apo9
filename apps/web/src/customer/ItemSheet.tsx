@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { L, sar, t } from "../shared/i18n.ts";
 import { Sheet } from "../shared/ui.tsx";
-import { cartStore } from "./cart.ts";
+import { post } from "../shared/api.ts";
+import { cartStore, groupStore } from "./cart.ts";
 
 export interface MenuItem {
   id: string;
@@ -15,7 +16,7 @@ export interface MenuItem {
 }
 
 /** Product customisation: validates min/max per modifier group before it can be added. */
-export function ItemSheet({ item, restaurant, videoId, onClose, onAdded }: { item: MenuItem; restaurant: { id: string; slug: string; name_ar: string }; videoId?: string | null; onClose: () => void; onAdded: (ok: boolean) => void }) {
+export function ItemSheet({ item, restaurant, videoId, onClose, onAdded }: { item: MenuItem; restaurant: { id: string; slug: string; name_ar: string }; videoId?: string | null; onClose: () => void; onAdded: (ok: boolean, group?: boolean, error?: string) => void }) {
   const [sel, setSel] = useState<Record<string, string[]>>(() =>
     Object.fromEntries(item.modifierGroups.map((g) => [g.id, g.min_select === 1 && g.max_select === 1 && g.options[0] ? [g.options.find((o) => o.is_available)?.id ?? g.options[0].id] : []])),
   );
@@ -33,7 +34,18 @@ export function ItemSheet({ item, restaurant, videoId, onClose, onAdded }: { ite
       return { ...s, [gid]: [...cur, oid] };
     });
 
-  const add = () => {
+  const add = async () => {
+    const g = groupStore.get();
+    if (g && g.restaurantId === restaurant.id) {
+      // Group order: the item goes to the shared server-side cart.
+      try {
+        await post(`/group-carts/${g.code}/items`, { itemId: item.id, qty, optionIds: chosen.map((o) => o.id) });
+        onAdded(true, true);
+      } catch (e) {
+        onAdded(false, true, (e as Error).message);
+      }
+      return;
+    }
     const ok = cartStore.add(
       { id: restaurant.id, slug: restaurant.slug, nameAr: restaurant.name_ar },
       { itemId: item.id, nameAr: item.name_ar, nameEn: item.name_en, qty, optionIds: chosen.map((o) => o.id), optionsLabel: chosen.map((o) => o.name_ar).join("، "), unitPrice: unit },
@@ -77,7 +89,7 @@ export function ItemSheet({ item, restaurant, videoId, onClose, onAdded }: { ite
             <span className="num">{qty}</span>
             <button aria-label="إنقاص" onClick={() => setQty((q) => Math.max(1, q - 1))}>−</button>
           </div>
-          <button className="btn primary lg grow" disabled={!item.is_available || !!invalid} onClick={add}>
+          <button className="btn primary lg grow" disabled={!item.is_available || !!invalid} onClick={() => void add()}>
             {invalid ? `اختر ${L(invalid)}` : `${t("أضف للسلة")} · ${sar(unit * qty)}`}
           </button>
         </div>

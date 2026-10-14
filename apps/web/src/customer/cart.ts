@@ -18,6 +18,9 @@ export interface Cart {
   restaurantNameAr: string | null;
   videoId: string | null;
   lines: CartLine[];
+  /** Set when this cart is a locked group order: the server places the group's items (authoritative). */
+  groupCartId?: string | null;
+  groupCode?: string | null;
 }
 
 const KEY = "abu9.cart";
@@ -56,7 +59,43 @@ export const cartStore = {
     set(lines.length ? { ...cart, lines } : empty);
   },
   clear: () => set(empty),
+  /** Load a locked group cart for checkout by the host. Replaces the personal cart. */
+  loadGroup(g: { id: string; code: string; restaurant_id: string; slug: string; restaurant_name_ar: string }, items: Array<{ item_id: string; name_ar: string; name_en: string; qty: number; price: number; option_ids: string[]; options: Array<{ nameAr: string; priceDelta: number }> }>) {
+    set({
+      restaurantId: g.restaurant_id, restaurantSlug: g.slug, restaurantNameAr: g.restaurant_name_ar, videoId: null, groupCartId: g.id, groupCode: g.code,
+      lines: items.map((i, n) => ({
+        key: `g${n}`, itemId: i.item_id, nameAr: i.name_ar, nameEn: i.name_en, qty: i.qty, optionIds: i.option_ids,
+        optionsLabel: i.options.map((o) => o.nameAr).join("، "), unitPrice: i.price + i.options.reduce((a, o) => a + o.priceDelta, 0),
+      })),
+    });
+  },
 };
+
+// Active group order the customer is adding to (by code). Items go to the shared server cart, not the personal cart.
+const GKEY = "abu9.group";
+let group: { code: string; restaurantId: string } | null = (() => {
+  try {
+    return JSON.parse(session.store.get(GKEY) ?? "null");
+  } catch {
+    return null;
+  }
+})();
+const gsubs = new Set<() => void>();
+export const groupStore = {
+  get: () => group,
+  set(g: { code: string; restaurantId: string } | null) {
+    group = g;
+    session.store.set(GKEY, g ? JSON.stringify(g) : null);
+    gsubs.forEach((f) => f());
+  },
+  subscribe(fn: () => void) {
+    gsubs.add(fn);
+    return () => gsubs.delete(fn);
+  },
+};
+export function useGroup() {
+  return useSyncExternalStore(groupStore.subscribe, groupStore.get);
+}
 
 export function useCart(): Cart {
   return useSyncExternalStore(cartStore.subscribe, cartStore.get);

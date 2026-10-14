@@ -193,8 +193,13 @@ export function orderRoutes(r: Router, app: AppContext) {
     requireUser(ctx);
     const g = (await app.db.query<Record<string, unknown>>("select g.*, r.name_ar restaurant_name_ar, r.slug from group_carts g join restaurants r on r.id = g.restaurant_id where g.code = $1", [ctx.params.code])).rows[0];
     if (!g) throw notFound("group cart");
-    const items = (await app.db.query("select gi.*, u.name user_name, m.name_ar, m.price from group_cart_items gi join users u on u.id = gi.user_id join menu_items m on m.id = gi.item_id where gi.group_cart_id = $1 order by gi.created_at", [g.id])).rows;
-    return { groupCart: g, items };
+    const items = (await app.db.query(
+      `select gi.*, u.name user_name, m.name_ar, m.name_en, m.price,
+              coalesce((select json_agg(json_build_object('id', o.id, 'nameAr', o.name_ar, 'priceDelta', o.price_delta)) from modifier_options o where o.id = any(gi.option_ids)), '[]') options
+       from group_cart_items gi join users u on u.id = gi.user_id join menu_items m on m.id = gi.item_id where gi.group_cart_id = $1 order by gi.created_at`,
+      [g.id],
+    )).rows;
+    return { groupCart: g, items, isHost: g.host_user_id === ctx.principal!.userId, me: ctx.principal!.userId };
   });
   r.post("/api/v1/group-carts/:code/items", async (ctx) => {
     const p = requireUser(ctx);

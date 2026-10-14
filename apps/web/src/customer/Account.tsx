@@ -2,6 +2,7 @@ import { useState } from "react";
 import { post, session, uuid } from "../shared/api.ts";
 import { date, sar, setLocale, t, useLocale } from "../shared/i18n.ts";
 import { Brand, Icon, Loadable, OtpLogin, Sadu, toast, useQuery, useSession } from "../shared/ui.tsx";
+import { AddressList } from "./Extras.tsx";
 
 export const CUSTOMER_DEMOS: Array<[string, string]> = [["سارة (عميلة)", "0500000001"], ["فهد (عميل)", "0500000002"]];
 
@@ -15,7 +16,7 @@ export function Account({ go }: { go: (r: string) => void }) {
 function AccountInner({ go, locale }: { go: (r: string) => void; locale: string }) {
   const me = useQuery("/me");
   const loyalty = useQuery("/me/loyalty");
-  const addresses = useQuery("/me/addresses");
+  const notes = useQuery("/me/notifications");
   const tickets = useQuery("/support/tickets");
   return (
     <>
@@ -48,11 +49,11 @@ function AccountInner({ go, locale }: { go: (r: string) => void; locale: string 
             )}
           </Loadable>
         </section>
-        <section className="panel tight stack">
-          <h3>{t("عناويني")}</h3>
-          <Loadable q={addresses}>{(d) => d.addresses.map((a: any) => (<div key={a.id} className="row small"><Icon.pin size={18} /><span className="grow">{a.label} · {a.district} <span className="muted">{a.details}</span></span>{a.is_default && <span className="badge">افتراضي</span>}</div>))}</Loadable>
-          <p className="xs muted">إضافة عنوان بالخريطة تتطلب مزوّد خرائط — مدرجة في قائمة العمل.</p>
+        <section className="panel tight stack" style={{ gap: 0 }}>
+          <button className="row between menu-row" onClick={() => go("notifications")}><span className="row" style={{ gap: 8 }}>{t("الإشعارات")}</span>{(notes.data?.notifications ?? []).some((n: any) => !n.read_at) && <span className="badge warn num">{notes.data.notifications.filter((n: any) => !n.read_at).length}</span>}</button>
+          <button className="row between menu-row" onClick={() => go("favorites")}><span className="row" style={{ gap: 8 }}><Icon.heart size={18} /> {t("المفضلة")}</span></button>
         </section>
+        <AddressList />
         <Loadable q={tickets}>
           {(d) => d.tickets.length > 0 ? (
             <section className="panel tight stack">

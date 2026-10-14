@@ -4,6 +4,7 @@ import { L, sar, t } from "../shared/i18n.ts";
 import { Empty, Icon, Skeleton, toast, useQuery, useSession } from "../shared/ui.tsx";
 import { cartStore, useCart } from "./cart.ts";
 import { locationStore, useLocation } from "./location.ts";
+import { AddressSheet } from "./Extras.tsx";
 
 const TEST_CARDS: Array<[string, string]> = [
   ["tok_visa_test", "بطاقة اختبار — تنجح"],
@@ -26,6 +27,7 @@ export function Checkout({ go }: { go: (r: string) => void }) {
   const [qErr, setQErr] = useState<ApiError | null>(null);
   const [placing, setPlacing] = useState(false);
   const [idemKey] = useState(uuid);
+  const [adding, setAdding] = useState(false);
 
   // Pick the default saved address once loaded.
   useEffect(() => {
@@ -78,6 +80,7 @@ export function Checkout({ go }: { go: (r: string) => void }) {
           paymentToken: card,
           expectedTotal: quote?.pricing.total,
           ...(cart.videoId ? { videoId: cart.videoId } : {}),
+          ...(cart.groupCartId ? { groupCartId: cart.groupCartId } : {}),
           ...(notes ? { notes } : {}),
         },
         { "idempotency-key": idemKey },
@@ -102,6 +105,7 @@ export function Checkout({ go }: { go: (r: string) => void }) {
             <h3>{cart.restaurantNameAr}</h3>
             <button className="btn sm ghost danger" onClick={() => cartStore.clear()}>إفراغ</button>
           </div>
+          {cart.groupCartId && <p className="notice small">طلب جماعي <span className="num">#{cart.groupCode}</span> — الأصناف مقفلة كما أضافها المشاركون، وأنت تدفع الطلب كاملاً.</p>}
           {cart.lines.map((l) => (
             <div key={l.key} className="row" style={{ alignItems: "flex-start" }}>
               <div className="grow">
@@ -109,11 +113,13 @@ export function Checkout({ go }: { go: (r: string) => void }) {
                 {l.optionsLabel && <div className="xs muted">{l.optionsLabel}</div>}
                 <div className="small num">{sar(l.unitPrice * l.qty)}</div>
               </div>
-              <div className="stepper">
-                <button aria-label="زيادة" onClick={() => cartStore.setQty(l.key, l.qty + 1)}>+</button>
-                <span className="num">{l.qty}</span>
-                <button aria-label="إنقاص" onClick={() => cartStore.setQty(l.key, l.qty - 1)}>−</button>
-              </div>
+              {cart.groupCartId ? <span className="num small">×{l.qty}</span> : (
+                <div className="stepper">
+                  <button aria-label="زيادة" onClick={() => cartStore.setQty(l.key, l.qty + 1)}>+</button>
+                  <span className="num">{l.qty}</span>
+                  <button aria-label="إنقاص" onClick={() => cartStore.setQty(l.key, l.qty - 1)}>−</button>
+                </div>
+              )}
             </div>
           ))}
         </section>
@@ -131,6 +137,8 @@ export function Checkout({ go }: { go: (r: string) => void }) {
           ) : (
             <p className="small row"><Icon.pin size={18} /> {loc.label}</p>
           )}
+          {authed && <button className="btn sm ghost" style={{ alignSelf: "flex-start" }} onClick={() => setAdding(true)}>+ {t("عنوان جديد")}</button>}
+          {adding && <AddressSheet onClose={() => setAdding(false)} onSaved={(a) => { setAdding(false); void addresses.reload(); locationStore.set({ lat: a.lat, lng: a.lng, label: a.label, addressId: a.id }); }} />}
           {quote && (
             <p className="small muted">
               يصلك خلال <span className="num">{quote.coverage.etaRange[0]}–{quote.coverage.etaRange[1]}</span> دقيقة · <span className="num">{quote.coverage.roadDistanceKm.toFixed(1)}</span> كم

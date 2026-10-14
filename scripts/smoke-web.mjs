@@ -138,6 +138,63 @@ await check("ops activates the new restaurant via UI", {
   },
 });
 
+// Group order across two browsers: host starts, guest joins by link, host locks and pays.
+{
+  const problems = [];
+  const mk = async () => {
+    const c = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const p = await c.newPage();
+    p.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
+    return [c, p];
+  };
+  const loginCustomer = async (p, phone) => {
+    await p.fill("#phone", phone);
+    await p.click("button:has-text('أرسل الرمز')");
+    await p.waitForFunction(() => document.querySelector("#code")?.value?.length === 6);
+    await p.click("button:has-text('دخول')");
+  };
+  const addFirstItem = async (p, name) => {
+    await p.locator(`.item:has-text('${name}')`).first().click();
+    await p.locator("[role=dialog] button.btn.primary").click();
+    await p.waitForSelector("text=أُضيف للطلب الجماعي");
+  };
+  const [hc, host] = await mk();
+  const [gc, guest] = await mk();
+  try {
+    await host.goto(`${BASE}/customer#/account`);
+    await loginCustomer(host, "0500000001");
+    await host.waitForSelector("text=تسجيل الخروج");
+    // address via the account screen
+    await host.click("button:has-text('+ إضافة')");
+    await host.fill("#ad-s", "شارع التحلية");
+    await host.click("[role=dialog] button:has-text('حفظ العنوان')");
+    await host.waitForSelector("text=شارع التحلية");
+    await host.goto(`${BASE}/customer#/r/najd-burger-demo`);
+    await host.click("button:has-text('طلب جماعي مع الأصدقاء')");
+    await host.waitForURL(/#\/g\//);
+    const code = host.url().split("#/g/")[1];
+    await host.click("button:has-text('أضف المزيد من المنيو')");
+    await addFirstItem(host, "سماش");
+    await guest.goto(`${BASE}/customer#/g/${code}`);
+    await loginCustomer(guest, "0500000002");
+    await guest.click("button:has-text('انضم وأضف طلبك')");
+    await addFirstItem(guest, "بطاطس");
+    await host.goto(`${BASE}/customer#/g/${code}`);
+    await host.waitForSelector("text=فهد", { timeout: 8000 }).catch(() => host.waitForSelector("text=بطاطس"));
+    await host.click("button:has-text('إقفال والدفع')");
+    await host.locator("[role=dialog] form button:not([type=button])").click();
+    await host.waitForSelector("text=طلب جماعي");
+    await host.waitForSelector("button:has-text('تأكيد الطلب'):not([disabled])", { timeout: 10000 });
+    await host.click("button:has-text('تأكيد الطلب')");
+    await host.waitForURL(/#\/o\//, { timeout: 10000 });
+  } catch (e) {
+    problems.push(`flow: ${e.message.split("\n")[0]}`);
+  }
+  if (problems.length) { failed++; console.log(`✖ group order across two customers\n   ${problems.join("\n   ")}`); } else console.log("✔ group order across two customers (+ new address)");
+  await hc.close();
+  await gc.close();
+}
+
 await browser.close();
 if (failed) {
   console.log(`${failed} smoke check(s) failed`);

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { put, del } from "../shared/api.ts";
 import { L, sar, t } from "../shared/i18n.ts";
 import { Empty, Icon, Loadable, toast, useQuery, useSession } from "../shared/ui.tsx";
+import { GroupBanner, startGroup } from "./Extras.tsx";
+import { useGroup } from "./cart.ts";
 import { ItemSheet, type MenuItem } from "./ItemSheet.tsx";
 import { useLocation } from "./location.ts";
 
@@ -67,6 +69,7 @@ export function RestaurantPage({ slug, go }: { slug: string; go: (r: string) => 
   const authed = !!useSession();
   const res = useQuery(`/restaurants/${slug}`);
   const [sheet, setSheet] = useState<MenuItem | null>(null);
+  const group = useGroup();
   const toggleFav = async (id: string, fav: boolean) => {
     if (!authed) return go("account");
     await (fav ? del(`/me/favorites/${id}`) : put(`/me/favorites/${id}`));
@@ -91,6 +94,10 @@ export function RestaurantPage({ slug, go }: { slug: string; go: (r: string) => 
                 {d.restaurant.is_demo && <span className="demo-flag" style={{ color: "#ccc", borderColor: "#888" }}>بيانات تجريبية</span>}
               </div>
             </div>
+            <GroupBanner go={go} />
+            {authed && !group && d.branches[0] && (
+              <button className="btn sm" style={{ marginTop: 12 }} onClick={() => void startGroup(d.restaurant, (d.branches.find((b: any) => b.accepting_orders) ?? d.branches[0]).id, go)}>{t("طلب جماعي مع الأصدقاء")}</button>
+            )}
             {d.videos.length > 0 && (
               <div className="row" style={{ overflowX: "auto", gap: 8, padding: "14px 0" }}>
                 {d.videos.map((v: any) => (
@@ -122,9 +129,10 @@ export function RestaurantPage({ slug, go }: { slug: string; go: (r: string) => 
               item={sheet}
               restaurant={d.restaurant}
               onClose={() => setSheet(null)}
-              onAdded={(ok) => {
+              onAdded={(ok, group, error) => {
                 setSheet(null);
-                toast(ok ? t("تمت الإضافة") : "سلتك فيها طلب من مطعم آخر. الطلب من مطعم واحد فقط.", !ok);
+                if (group) toast(ok ? t("أُضيف للطلب الجماعي") : error ?? "تعذّرت الإضافة", !ok);
+                else toast(ok ? t("تمت الإضافة") : "سلتك فيها طلب من مطعم آخر. الطلب من مطعم واحد فقط.", !ok);
               }}
             />
           )}
