@@ -228,6 +228,7 @@ function Support() {
   const c = useQuery("/admin/claims");
   const inc = useQuery("/admin/incidents");
   const fraud = useQuery("/admin/fraud");
+  const ap = useQuery("/admin/refund-approvals");
   const resolve = async (tk: any) => {
     const fault = await ask({ title: "الجهة المسؤولة عن المشكلة", choices: [["restaurant", "المطعم"], ["logistics", "شركة التوصيل"], ["abu9", "أبو9"], ["customer", "العميل"], ["external", "ظرف خارجي"]] });
     if (!fault) return;
@@ -235,12 +236,30 @@ function Support() {
     if (amt === null) return;
     const note = await askReason("يُحفظ مع التذكرة وفي سجل التدقيق.", "ملخص الأدلة والقرار");
     if (!note) return;
-    void act(() => post(`/admin/tickets/${tk.id}/resolve`, { faultParty: fault, refundAmount: Math.round(Number(amt) * 100), note }), "تم حل التذكرة", t.reload);
+    try {
+      const r = await post(`/admin/tickets/${tk.id}/resolve`, { faultParty: fault, refundAmount: Math.round(Number(amt) * 100), note });
+      toast(r.pendingApproval ? `المبلغ فوق ${sar(r.threshold)}: أُرسل لاعتماد مدير آخر` : "تم حل التذكرة");
+      await Promise.all([t.reload(), ap.reload()]);
+    } catch (e) { toast((e as Error).message, true); }
+  };
+  const decide = async (a: any, approve: boolean) => {
+    const reason = await askReason(approve ? `استرداد ${sar(a.amount)} للطلب #${a.order_number}. سينفَّذ فوراً عند الاعتماد.` : "يعود الطلب للتذكرة لمراجعة جديدة.", approve ? "اعتماد الاسترداد" : "رفض الاسترداد");
+    if (reason) await act(() => post(`/admin/refund-approvals/${a.id}/decide`, { approve, reason }), approve ? "اعتُمد ونُفّذ الاسترداد" : "رُفض", async () => { await Promise.all([ap.reload(), t.reload()]); });
   };
   return (
     <>
       <PageHead title="الدعم والمطالبات" sub="نعوّض العميل بسرعة على حساب أبو9، ثم نسترد من الشريك فقط عبر مطالبة قابلة للاعتراض وبحسب العقد." />
       <div className="stack lg">
+        <Loadable q={ap}>{(d) => d.approvals.length === 0 ? null : (
+          <section className="panel stack"><h3>استردادات بانتظار اعتماد ثانٍ (<span className="num">{d.approvals.length}</span>)</h3>
+            <p className="xs muted">مبدأ «أربع أعين»: من اقترح الاسترداد لا يعتمده.</p>
+            {d.approvals.map((a: any) => (
+              <div key={a.id} className="row between small" style={{ gap: 8 }}>
+                <span>#<span className="num">{a.order_number}</span> · {a.reason_code} · <strong className="num">{sar(a.amount)}</strong> · اقترحه {a.proposed_by_name ?? "—"}<div className="xs muted">{a.note}</div></span>
+                <span className="row" style={{ gap: 4 }}><button className="btn sm primary" onClick={() => void decide(a, true)}>اعتماد</button><button className="btn sm ghost" onClick={() => void decide(a, false)}>رفض</button></span>
+              </div>
+            ))}
+          </section>)}</Loadable>
         <Loadable q={t}>{(d) => (
           <section className="panel table-wrap"><h3>التذاكر</h3>
             <table className="table"><thead><tr><th>#</th><th>العميل</th><th>السبب</th><th>المبلغ المتأثر</th><th>الجهة</th><th>الحالة</th><th /></tr></thead>

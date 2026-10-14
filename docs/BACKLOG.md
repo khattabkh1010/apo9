@@ -18,11 +18,11 @@ Status legend: ✅ done this session · ◐ API/foundation done, UI or integrati
 ✅ Video feed (autoplay, likes, views, add-to-cart from video) · ✅ moderation queue · ✅ creator portal (upload, link dishes, referral codes, opt-in) · ✅ attribution · ✅ promotions with budget-safe reservation · ✅ loyalty (earn/redeem/expire/reverse, campaign budgets & funding split) · ✅ ABU9+ (price experiment, subscribe, cancel/resume, renewal, grace, refund, revenue recognition) · ◐ creator campaign creation UI · ○ personalised ranking
 
 ## Session 2 (this build) ✅
-✅ `pg` + verified TLS · ✅ web apps under strict tsc · ✅ cookie sessions + CSRF, staff TOTP MFA, rate limits, strict CSP, self-hosted fonts, in-app dialogs · ✅ restaurant self-onboarding, modifier and hours editors, ops activation (trial at activation) · ✅ customer addresses, favourites, notifications, group-order UI · ✅ creator campaign creation with four-eyes approval · ✅ payout separation of duties · ✅ Prometheus metrics, alert rules, runbooks · ✅ Docker image built and run; CI browser-smoke job · ✅ dev courier simulator
+✅ `pg` + verified TLS · ✅ web apps under strict tsc · ✅ cookie sessions + CSRF, staff TOTP MFA, rate limits, strict CSP, self-hosted fonts, in-app dialogs · ✅ restaurant self-onboarding, modifier and hours editors, ops activation (trial at activation) · ✅ customer addresses, favourites, notifications, group-order UI · ✅ creator campaign creation with four-eyes approval · ✅ payout and large-refund separation of duties · ✅ Prometheus metrics, alert rules, runbooks · ✅ Docker image built and run; CI browser-smoke job · ✅ dev courier simulator
 
 ## Next priorities (recommended order)
 1. **P0 Real integrations sandbox**: PSP sandbox (Moyasar or HyperPay) incl. 3-DS + Apple Pay + mada; SMS provider; replace in-repo DB driver with `pg`+TLS.
-2. **P0 Remaining security** from LAUNCH_BLOCKERS §C: second approver for large refunds, staff TOTP reset UI, upload scanning, secret manager, dependency scanning, pentest.
+2. **P0 Remaining security** from LAUNCH_BLOCKERS §C: staff TOTP reset UI, upload scanning, secret manager, dependency scanning, pentest.
 3. **P1 Expo apps** for customer and courier reusing `packages/domain` + API (background location for couriers, push).
 4. **P1 Maps**: routing provider adapter, address picker, live courier map.
 5. **P1 Restaurant portal depth**: staff invitations, menu item images, multi-branch menus, creator incentive payouts in the ledger and settlements.

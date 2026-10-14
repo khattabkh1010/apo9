@@ -31,13 +31,13 @@ This is the honest status as of this build. Nothing here is a live licensed inte
 | No CSP; Google Fonts third party | Strict CSP (`script-src 'self'`, no inline scripts), COOP, Permissions-Policy, HSTS in production; fonts self-hosted |
 | `window.prompt` for reasons | Accessible in-app dialogs everywhere |
 | Payouts approved and released by the same person | Separation of duties: settlement approver ≠ payout recorder (API + DB constraint). Creator campaigns: proposer ≠ approver |
+| One agent could issue a large refund alone | Refunds above `refund_four_eyes_threshold` (default SAR 100) become proposals. A different person with `refunds.issue_large` approves before any money moves (API + DB check) |
 
 ### Still open
 | Risk | Next step |
 |---|---|
 | Rate-limit counters are in-process | Move to Redis when running >1 instance; also enforce at the WAF |
 | Uploads not virus-scanned or content-sniffed; no transcoding | Scan and transcode before moderation |
-| Large refunds: a single agent with `refunds.issue_large` can refund | Add a second-approver queue above a threshold (payouts and campaigns already have four-eyes) |
 | Staff TOTP reset has no UI | Admin reset flow with a second approver |
 | WebAuthn/passkeys for staff | Stronger than TOTP against phishing |
 | Secrets via env | Use a secret manager; rotate `OTP_HMAC_SECRET`, `PAYMENT_WEBHOOK_SECRET`, `MFA_ENCRYPTION_KEY` |

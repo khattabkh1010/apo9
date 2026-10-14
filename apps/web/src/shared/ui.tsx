@@ -298,6 +298,7 @@ const STATUS: Record<string, [string, string]> = {
   pending: ["قيد الانتظار", "warn"],
   onboarding: ["قيد التهيئة", "warn"],
   pending_approval: ["بانتظار الاعتماد", "warn"],
+  awaiting_evidence: ["بانتظار الأدلة", "warn"],
   ended: ["منتهية", ""],
   exhausted: ["استُنفدت الميزانية", ""],
   churned: ["منسحب", ""],

@@ -112,3 +112,38 @@ test("dev courier simulator: keeps demo couriers alive and moves them toward the
     assert.ok(after.last_lat !== busy.last_lat || after.last_lng !== busy.last_lng, "busy courier moved");
   }
 });
+
+test("refunds above the threshold need a second approver (four-eyes) before money moves", async () => {
+  await s.db.query("update platform_settings set value = '3000' where key = 'refund_four_eyes_threshold'");
+  await s.db.query("insert into users(phone, name) values ('+966500000904', 'مدير ٢ (تجريبي)') on conflict do nothing");
+  await s.db.query("insert into user_roles(user_id, role) select id, 'ops_manager' from users where phone = '+966500000904' on conflict do nothing");
+  const ops = await new Client(s.base).login(DEMO_PHONES.opsAdmin);
+  const ops2 = await new Client(s.base).login("0500000904");
+  const finance = await new Client(s.base).login(DEMO_PHONES.finance);
+
+  const tk = await host.post("/api/v1/support/tickets", { orderId: ctx.orderId, reasonCode: "food_quality", description: "الأكل بارد" });
+  assert.equal(tk.status, 201);
+  assert.equal(tk.body.autoResolved, false);
+  const total = (await s.db.query<{ total: number }>("select total from orders where id = $1", [ctx.orderId])).rows[0]!.total;
+  const amount = Math.min(total, 4000);
+
+  const proposed = await ops.post(`/api/v1/admin/tickets/${tk.body.ticketId}/resolve`, { faultParty: "abu9", refundAmount: amount, note: "الأدلة تدعم الشكوى" });
+  assert.equal(proposed.status, 202, JSON.stringify(proposed.body));
+  const approvalId = proposed.body.pendingApproval;
+  assert.equal((await s.db.query<{ n: number }>("select count(*)::int n from refunds where ticket_id = $1", [tk.body.ticketId])).rows[0]!.n, 0, "no money moved yet");
+  assert.equal((await ops.post(`/api/v1/admin/tickets/${tk.body.ticketId}/resolve`, { faultParty: "abu9", refundAmount: amount, note: "مرة ثانية" })).status, 409, "one proposal at a time");
+
+  const self = await ops.post(`/api/v1/admin/refund-approvals/${approvalId}/decide`, { approve: true, reason: "موافق" });
+  assert.equal(self.status, 403);
+  assert.equal(self.body.error.code, "four_eyes_required");
+  assert.equal((await finance.post(`/api/v1/admin/refund-approvals/${approvalId}/decide`, { approve: true, reason: "موافق" })).status, 403, "finance lacks refunds.issue_large");
+  const ok = await ops2.post(`/api/v1/admin/refund-approvals/${approvalId}/decide`, { approve: true, reason: "راجعت الصور" });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.ok(ok.body.refundId);
+  const refund = (await s.db.query<{ amount: number; status: string; created_by: string }>("select amount, status, created_by from refunds where ticket_id = $1", [tk.body.ticketId])).rows[0]!;
+  assert.equal(refund.amount, amount);
+  assert.equal(refund.status, "succeeded");
+  assert.equal((await ops2.post(`/api/v1/admin/refund-approvals/${approvalId}/decide`, { approve: true, reason: "again" })).status, 409);
+  const acts = (await s.db.query<{ action: string }>("select action from audit_logs where entity_id = $1 order by created_at", [tk.body.ticketId])).rows.map((r) => r.action);
+  assert.deepEqual(acts, ["refund.proposed", "refund.approved"]);
+});

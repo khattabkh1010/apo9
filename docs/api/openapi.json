@@ -3103,6 +3103,63 @@
         }
       }
     },
+    "/api/v1/admin/refund-approvals": {
+      "get": {
+        "tags": [
+          "Admin & Operations"
+        ],
+        "operationId": "GET_api_v1_admin_refund_approvals",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/refund-approvals/{id}/decide": {
+      "post": {
+        "tags": [
+          "Admin & Operations"
+        ],
+        "operationId": "POST_api_v1_admin_refund_approvals_id_decide",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/claims": {
       "get": {
         "tags": [

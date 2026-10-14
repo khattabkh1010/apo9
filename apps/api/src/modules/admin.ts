@@ -1,8 +1,9 @@
 import { z } from "zod";
 import type { AppContext } from "../context.ts";
-import { badRequest, conflict, notFound, withStatus, type Router } from "../http/router.ts";
+import { ApiError, badRequest, conflict, notFound, withStatus, type Router } from "../http/router.ts";
 import { requirePermission } from "../auth/rbac.ts";
 import { audit } from "../audit.ts";
+import { getSetting } from "../services/common.ts";
 import { acceptOrder, rejectOrder, transitionOrder } from "../services/orders.ts";
 import { dispatchJob, overrideAssign } from "../services/dispatch.ts";
 import { decideClaim, resolveTicket } from "../services/support.ts";
@@ -274,10 +275,62 @@ export function adminRoutes(r: Router, app: AppContext) {
   r.post("/api/v1/admin/tickets/:id/resolve", async (ctx) => {
     const p = requirePermission(ctx, "refunds.issue");
     const b = await ctx.body(z.object({ faultParty: z.enum(["abu9", "restaurant", "logistics", "customer", "external"]), refundAmount: z.number().int().min(0), note: z.string().min(3).max(500) }));
-    if (b.refundAmount > 10_000) requirePermission(ctx, "refunds.issue_large");
+    // Four-eyes above the threshold: the refund becomes a proposal; a different person approves it.
+    const threshold = await getSetting<number>(app.db, "refund_four_eyes_threshold", 10_000);
+    if (b.refundAmount > threshold) {
+      return app.db.tx(async (q) => {
+        const tk = (await q.query<{ status: string }>("select status from support_tickets where id = $1 for update", [ctx.params.id])).rows[0];
+        if (!tk) throw notFound("ticket");
+        if (tk.status !== "open" && tk.status !== "awaiting_evidence") throw conflict("ticket_not_open");
+        const a = (await q.query<{ id: string }>(
+          "insert into refund_approvals(ticket_id, fault_party, amount, note, proposed_by) values ($1,$2,$3,$4,$5) returning id",
+          [ctx.params.id, b.faultParty, b.refundAmount, b.note, p.userId],
+        )).rows[0]!;
+        await q.query("update support_tickets set status = 'pending_approval' where id = $1", [ctx.params.id]);
+        await audit(q, ctx, { action: "refund.proposed", entityType: "support_ticket", entityId: ctx.params.id!, after: { ...b, approvalId: a.id, threshold } });
+        return withStatus(202, { pendingApproval: a.id, threshold });
+      });
+    }
     const res = await resolveTicket(app, ctx.params.id!, { faultParty: b.faultParty, refundAmount: b.refundAmount, actorId: p.userId, note: b.note });
     await audit(app.db, ctx, { action: "ticket.resolve", entityType: "support_ticket", entityId: ctx.params.id!, after: { ...b, ...res } });
     return res;
+  });
+  r.get("/api/v1/admin/refund-approvals", async (ctx) => {
+    requirePermission(ctx, "refunds.issue");
+    return {
+      approvals: (await app.db.query(
+        `select a.*, t.reason_code, t.description, o.number order_number, o.total order_total, u.name proposed_by_name
+         from refund_approvals a join support_tickets t on t.id = a.ticket_id left join orders o on o.id = t.order_id join users u on u.id = a.proposed_by
+         where a.status = 'pending' order by a.created_at`,
+      )).rows,
+    };
+  });
+  r.post("/api/v1/admin/refund-approvals/:id/decide", async (ctx) => {
+    const p = requirePermission(ctx, "refunds.issue_large");
+    const b = await ctx.body(z.object({ approve: z.boolean(), reason: z.string().min(3).max(300) }));
+    const a = (await app.db.query<{ id: string; ticket_id: string; fault_party: string; amount: number; note: string; proposed_by: string; status: string }>("select * from refund_approvals where id = $1", [ctx.params.id])).rows[0];
+    if (!a) throw notFound("approval");
+    if (a.status !== "pending") throw conflict("already_decided");
+    if (a.proposed_by === p.userId) throw new ApiError(403, "four_eyes_required", "لا يمكنك اعتماد استرداد اقترحته بنفسك");
+    // Claim the decision first so two approvers cannot both execute the refund.
+    const claimed = await app.db.query("update refund_approvals set status = $2, decided_by = $3, decision_reason = $4, decided_at = now() where id = $1 and status = 'pending'", [a.id, b.approve ? "approved" : "rejected", p.userId, b.reason]);
+    if (!claimed.rowCount) throw conflict("already_decided");
+    if (!b.approve) {
+      await app.db.query("update support_tickets set status = 'open' where id = $1 and status = 'pending_approval'", [a.ticket_id]);
+      await audit(app.db, ctx, { action: "refund.rejected", entityType: "support_ticket", entityId: a.ticket_id, before: a, reason: b.reason });
+      return { ok: true, approved: false };
+    }
+    await app.db.query("update support_tickets set status = 'open' where id = $1", [a.ticket_id]);
+    try {
+      const res = await resolveTicket(app, a.ticket_id, { faultParty: a.fault_party as "abu9", refundAmount: a.amount, actorId: p.userId, note: `${a.note} (اعتماد: ${b.reason})` });
+      await audit(app.db, ctx, { action: "refund.approved", entityType: "support_ticket", entityId: a.ticket_id, before: a, after: res, reason: b.reason });
+      return { ok: true, approved: true, ...res };
+    } catch (e) {
+      // Execution failed (e.g. PSP error): return the proposal to pending so it can be retried.
+      await app.db.query("update refund_approvals set status = 'pending', decided_by = null, decision_reason = null, decided_at = null where id = $1", [a.id]);
+      await app.db.query("update support_tickets set status = 'pending_approval' where id = $1", [a.ticket_id]);
+      throw e;
+    }
   });
   r.get("/api/v1/admin/claims", async (ctx) => {
     requirePermission(ctx, "claims.resolve");
