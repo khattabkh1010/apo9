@@ -1,0 +1,36 @@
+# Local development stack. `docker compose up` then `docker compose exec api npm run db:reset`.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: abu9
+      POSTGRES_PASSWORD: abu9_dev
+      POSTGRES_DB: abu9
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data, ./infra/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U abu9"]
+      interval: 5s
+
+  # Redis is NOT used yet (in-process event bus + Postgres advisory-lock jobs). Kept here because
+  # multi-instance real-time fan-out and queued jobs need it — see docs/ARCHITECTURE.md §Scaling.
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    profiles: ["future"]
+
+  api:
+    build: .
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://abu9:abu9_dev@postgres:5432/abu9
+      MIGRATE_ON_START: "1"
+      MEDIA_DIR: /data/media
+    ports: ["8080:8080"]
+    volumes: [media:/data/media]
+
+volumes:
+  pgdata:
+  media:
