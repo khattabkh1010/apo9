@@ -1,6 +1,6 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { createDb, PgError, serializeParam } from "../src/pg.ts";
+import { createDb, PgError, resolveDbConfig, serializeParam } from "../src/pg.ts";
 
 const db = createDb(process.env.TEST_DATABASE_URL ?? "postgres://abu9:abu9_dev@127.0.0.1:5432/abu9_test", 3);
 after(() => db.close());
@@ -57,4 +57,33 @@ test("param serialisation", () => {
   assert.equal(serializeParam(["a", 'q"x']), '{"a","q\\"x"}');
   assert.equal(serializeParam(false), "f");
   assert.equal(serializeParam(undefined), null);
+});
+
+test("date, numeric, timestamp and bigint[] keep exact semantics", async () => {
+  const r = await db.query<Record<string, unknown>>(
+    "select '2026-03-01'::date d, 12.50::numeric n, '2026-03-01 10:00:00'::timestamp ts, array[1, 9007199254740993]::bigint[] ba, 9007199254740993::bigint huge",
+  );
+  const row = r.rows[0]!;
+  assert.equal(row.d, "2026-03-01");
+  assert.equal(row.n, "12.50");
+  assert.equal((row.ts as Date).toISOString(), "2026-03-01T10:00:00.000Z");
+  assert.deepEqual(row.ba, [1, "9007199254740993"]);
+  assert.equal(row.huge, "9007199254740993");
+});
+
+test("jsonb params: arrays of objects go in as JSON, scalar arrays as Postgres arrays", async () => {
+  const r = await db.query<{ j: unknown; a: string[] }>("select $1::jsonb j, $2::text[] a", [[{ k: 1 }], ["x", "y"]]);
+  assert.deepEqual(r.rows[0]!.j, [{ k: 1 }]);
+  assert.deepEqual(r.rows[0]!.a, ["x", "y"]);
+});
+
+test("sslmode resolution", () => {
+  assert.equal(resolveDbConfig("postgres://u:p@h/db").ssl, false);
+  const full = resolveDbConfig("postgres://u:p@db.internal/db?sslmode=verify-full", "-----BEGIN CERTIFICATE-----x");
+  assert.equal(full.sslmode, "verify-full");
+  assert.ok(full.ssl && full.ssl.rejectUnauthorized === true && full.ssl.ca);
+  assert.ok(!full.connectionString.includes("sslmode"));
+  const req = resolveDbConfig("postgres://u:p@h/db?sslmode=require");
+  assert.ok(req.ssl && req.ssl.rejectUnauthorized === false);
+  assert.throws(() => resolveDbConfig("postgres://u:p@h/db?sslmode=bogus"));
 });

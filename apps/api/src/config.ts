@@ -30,6 +30,14 @@ export const config = {
   mediaDir: env.MEDIA_DIR ?? new URL("../storage/media", import.meta.url).pathname,
 };
 
+// Production databases must be reached over verified TLS unless they are on the same host.
+if (isProd) {
+  const u = new URL(config.databaseUrl);
+  const mode = u.searchParams.get("sslmode") ?? "disable";
+  const local = ["localhost", "127.0.0.1", "::1", ""].includes(u.hostname);
+  if (!local && mode !== "verify-full" && mode !== "verify-ca") throw new Error("production DATABASE_URL must use sslmode=verify-full (or verify-ca)");
+}
+
 if (isProd && (config.paymentProvider === "mock" || config.smsProvider === "mock")) {
   throw new Error("mock payment/SMS providers cannot run with NODE_ENV=production");
 }

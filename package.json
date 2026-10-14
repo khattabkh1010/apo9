@@ -22,15 +22,17 @@
     "test:e2e": "node --test --test-reporter=spec apps/api/test/e2e.test.ts"
   },
   "dependencies": {
+    "pg": "^8.23.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
-    "esbuild": "^0.28.0",
-    "typescript": "^6.0.0",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.0",
-    "@types/react-dom": "^19.2.0"
+    "@types/react-dom": "^19.2.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^6.0.0"
   }
 }
