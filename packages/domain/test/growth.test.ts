@@ -157,3 +157,19 @@ test("coverage is per branch-zone, not a global radius", () => {
   const saturated = evaluateCoverage({ ...base, rules: [{ branchId: "b1", zoneId: "z", enabled: true, maxRoadKm: 6, maxTravelMinutes: 20 }], capacity: [{ zoneId: "z", availableCouriers: 2, openDeliveries: 4, maxLoadFactor: 1.6 }] });
   assert.ok(saturated.reasons.includes("no_courier_capacity"));
 });
+
+import { canApprove, incentiveFor, validateCampaign } from "../src/creators.ts";
+
+test("creator campaigns: bounded incentives, budget and duration; four-eyes approval", () => {
+  assert.deepEqual(validateCampaign({ incentiveType: "fixed_per_order", incentiveValue: 500, budget: 50_000 }), []);
+  assert.deepEqual(validateCampaign({ incentiveType: "none", incentiveValue: 0, budget: 0 }), []);
+  assert.equal(validateCampaign({ incentiveType: "fixed_per_order", incentiveValue: 9_000, budget: 50_000 }).length, 1);
+  assert.equal(validateCampaign({ incentiveType: "percent_of_food", incentiveValue: 5_000, budget: 50_000 }).length, 1);
+  assert.equal(validateCampaign({ incentiveType: "fixed_per_order", incentiveValue: 500, budget: 0 }).length, 1);
+  const now = new Date("2026-03-01T00:00:00Z");
+  assert.equal(validateCampaign({ incentiveType: "none", incentiveValue: 0, budget: 0, endsAt: new Date("2026-07-01T00:00:00Z") }, now).length, 1);
+  assert.equal(incentiveFor("percent_of_food", 1_000, 4_550), 455);
+  assert.equal(incentiveFor("fixed_per_order", 500, 1), 500);
+  assert.equal(canApprove("u1", "u1"), false);
+  assert.equal(canApprove("u1", "u2"), true);
+});

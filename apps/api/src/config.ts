@@ -32,6 +32,8 @@ export const config = {
   /** Only trust X-Forwarded-For when running behind a known proxy/load balancer. */
   trustProxy: env.TRUST_PROXY === "1",
   rateLimit: env.RATE_LIMIT !== "0",
+  /** OTP requests per phone per hour. Fixed at 5 in production; overridable for local test runs. */
+  otpMaxPerHour: isProd ? 5 : Number(env.OTP_MAX_PER_HOUR ?? 5),
   /** Cookies get the Secure flag in production (HTTPS only). */
   secureCookies: isProd || env.SECURE_COOKIES === "1",
   jobsEnabled: env.JOBS_ENABLED !== "0",

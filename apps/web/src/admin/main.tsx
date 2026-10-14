@@ -263,12 +263,56 @@ function Support() {
 }
 
 // ───────────────────────── content & creators ─────────────────────────
+function CampaignsAdmin() {
+  const q = useQuery("/admin/creator-campaigns");
+  const label = (c: any) => (c.incentive_type === "fixed_per_order" ? `${sar(c.incentive_value)} / طلب` : c.incentive_type === "percent_of_food" ? `${c.incentive_value / 100}٪` : "—");
+  const FUND: Record<string, string> = { abu9: "أبو9", restaurant: "المطعم", shared: "مشترك" };
+  const create = async () => {
+    const name = await ask({ title: "حملة أبو9 جديدة", label: "تموّلها أبو9. تحتاج اعتماد مدير آخر قبل التفعيل.", minLength: 3 });
+    if (!name) return;
+    const type = await ask({ title: "نوع الحافز", choices: [["fixed_per_order", "مبلغ لكل طلب منسوب"], ["percent_of_food", "نسبة من قيمة الأكل"], ["none", "بدون حافز"]] });
+    if (!type) return;
+    const value = type === "none" ? "0" : await ask({ title: type === "percent_of_food" ? "النسبة ٪ (حتى 30)" : "المبلغ لكل طلب (ر.س، حتى 50)", kind: "number", initial: type === "percent_of_food" ? "5" : "5", min: 0.01, max: type === "percent_of_food" ? 30 : 50 });
+    if (value === null) return;
+    const budget = type === "none" ? "0" : await ask({ title: "الميزانية (ر.س)", kind: "number", initial: "2000", min: 1, max: 1_000_000 });
+    if (budget === null) return;
+    await act(() => post("/admin/creator-campaigns", { name, incentiveType: type, incentiveValue: Math.round(Number(value) * 100), budget: Math.round(Number(budget) * 100), fundedBy: "abu9", endsAt: new Date(Date.now() + 30 * 86_400_000).toISOString() }), "أُرسلت للاعتماد", q.reload);
+  };
+  return (
+    <Loadable q={q}>{(d) => (
+      <section className="panel table-wrap" style={{ marginBottom: 20 }}>
+        <div className="row between"><h3>حملات الصنّاع</h3><button className="btn sm primary" onClick={() => void create()}>+ حملة أبو9</button></div>
+        <p className="xs muted">الاعتماد بمبدأ «أربع أعين»: من اقترح الحملة لا يعتمدها. لا يُصرف حافز إلا لصانع اشترك واعتمدناه، ضمن الميزانية.</p>
+        <table className="table"><thead><tr><th>الحملة</th><th>المطعم</th><th>التمويل</th><th>الحافز</th><th>الصرف</th><th>الصنّاع</th><th>الحالة</th><th /></tr></thead>
+          <tbody>{d.campaigns.map((c: any) => (
+            <tr key={c.id}>
+              <td>{c.name}<div className="xs muted">اقترحها {c.created_by_name ?? "—"}</div></td>
+              <td>{c.restaurant ?? "كل المطاعم"}</td><td>{FUND[c.funded_by]}</td><td className="small">{label(c)}</td>
+              <td className="num small">{sar(c.spent)} / {sar(c.budget)}</td><td className="num">{c.creators_approved}</td><td><StatusBadge s={c.status} /></td>
+              <td className="row" style={{ gap: 4 }}>
+                {c.status === "pending_approval" && <button className="btn sm primary" onClick={() => void act(() => post(`/admin/creator-campaigns/${c.id}/approve`, {}), "اعتُمدت", q.reload)}>اعتماد</button>}
+                {(c.status === "active" || c.status === "paused") && <button className="btn sm ghost" onClick={async () => { const reason = await askReason(); if (reason) await act(() => post(`/admin/creator-campaigns/${c.id}/status`, { status: c.status === "active" ? "paused" : "active", reason }), "تم", q.reload); }}>{c.status === "active" ? "إيقاف" : "استئناف"}</button>}
+                {c.status !== "ended" && <button className="btn sm ghost" onClick={async () => { const reason = await askReason(); if (reason) await act(() => post(`/admin/creator-campaigns/${c.id}/status`, { status: "ended", reason }), "انتهت", q.reload); }}>إنهاء</button>}
+              </td>
+            </tr>))}</tbody></table>
+        {d.pendingEnrollments.length > 0 && (
+          <div className="stack" style={{ marginTop: 12 }}>
+            <h4>صنّاع بانتظار الاعتماد</h4>
+            {d.pendingEnrollments.map((e: any) => <div key={`${e.campaign_id}:${e.creator_id}`} className="row between small"><span>@{e.handle} · {e.campaign}</span><button className="btn sm" onClick={() => void act(() => post(`/admin/creator-enrollments/${e.campaign_id}/${e.creator_id}/approve`), "اعتُمد الصانع", q.reload)}>اعتماد</button></div>)}
+          </div>
+        )}
+      </section>)}
+    </Loadable>
+  );
+}
+
 function ContentPage() {
   const v = useQuery("/admin/moderation/videos");
   const cr = useQuery("/admin/creators");
   return (
     <>
       <PageHead title="المحتوى والصنّاع" sub="لا يظهر فيديو في اكتشف قبل الموافقة. حوافز الصنّاع اختيارية وتحتاج موافقة." />
+      <CampaignsAdmin />
       <Loadable q={v}>{(d) => (
         <section className="panel stack" style={{ marginBottom: 20 }}>
           <h3>بانتظار المراجعة (<span className="num">{d.videos.length}</span>)</h3>

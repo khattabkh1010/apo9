@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { patch, post } from "../shared/api.ts";
 import { date, sar, time, minutesUntil } from "../shared/i18n.ts";
+import { CreatorCampaigns } from "./campaigns.tsx";
 import { Apply, HoursSheet, MenuToolbar, ModifiersSheet, Onboarding } from "./onboarding.tsx";
 import { ask, DashShell, Empty, Kpis, Loadable, OtpLogin, PageHead, Brand, Sheet, StatusBadge, ToastHost, mount, toast, useHashRoute, useQuery, useSession } from "../shared/ui.tsx";
 
@@ -342,6 +343,7 @@ function Promotions({ rid }: { rid: string }) {
           )}
         </Loadable>
       </div>
+      <CreatorCampaigns rid={rid} />
     </>
   );
 }

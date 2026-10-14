@@ -297,6 +297,9 @@ const STATUS: Record<string, [string, string]> = {
   restricted: ["مقيّد", "warn"],
   pending: ["قيد الانتظار", "warn"],
   onboarding: ["قيد التهيئة", "warn"],
+  pending_approval: ["بانتظار الاعتماد", "warn"],
+  ended: ["منتهية", ""],
+  exhausted: ["استُنفدت الميزانية", ""],
   churned: ["منسحب", ""],
 };
 export function StatusBadge({ s }: { s: string }) {

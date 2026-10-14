@@ -2,6 +2,7 @@
 // Logs in through the real UI (cookie sessions), passes the staff MFA screen, opens main screens,
 // exercises an in-app dialog, and fails on page errors or CSP violations.
 // Usage: node scripts/smoke-web.mjs   (BASE=http://127.0.0.1:8080, PLAYWRIGHT_PATH, CHROME overridable)
+// The run logs in ~15 times: start the API with RATE_LIMIT=0 OTP_MAX_PER_HOUR=1000 for repeated local runs.
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_PATH ?? "/opt/node-tools/node_modules/playwright");
@@ -33,7 +34,18 @@ async function check(name, { path, phone, mobile = false, staff = false, expect,
     if (staff) {
       await page.waitForSelector("text=المصادقة الثنائية");
       if (await page.isVisible("button:has-text('إعداد تطبيق المصادقة')")) await page.click("button:has-text('إعداد تطبيق المصادقة')");
-      await page.waitForFunction(() => document.querySelector("#totp")?.value?.length === 6);
+      // Each TOTP step can be used once; with several staff logins in one run, wait for the next 30 s window.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await page.waitForFunction(() => document.querySelector("#totp")?.value?.length === 6, null, { timeout: 4000 });
+          break;
+        } catch (e) {
+          if (attempt >= 2) throw e;
+          await page.waitForTimeout(31_000);
+          await page.reload();
+          await page.waitForSelector("text=المصادقة الثنائية");
+        }
+      }
       await page.click("button:has-text('تحقق')");
     }
     await page.waitForSelector(expect, { timeout: 8000 });
@@ -135,6 +147,23 @@ await check("ops activates the new restaurant via UI", {
     await p.click("button:has-text('تفعيل المطعم')");
     await dialog(p, "اكتملت المراجعة والتدريب");
     await p.waitForSelector("text=تم التفعيل");
+  },
+});
+
+const campaignName = `حملة اختبار ${String(Date.now()).slice(-5)}`;
+await check("restaurant proposes a creator campaign via UI", {
+  path: "/restaurant#/promotions", phone: "0500000102", expect: "text=حملة مع صنّاع المحتوى",
+  extra: async (p) => {
+    await p.fill("#cc-n", campaignName);
+    await p.click("button:has-text('إرسال للموافقة')");
+    await p.waitForSelector(`td:has-text('${campaignName}')`);
+  },
+});
+await check("ops approves the campaign via UI", {
+  path: "/admin#/content", phone: "0500000901", staff: true, expect: "text=حملات الصنّاع",
+  extra: async (p) => {
+    await p.locator(`tr:has-text('${campaignName}') button:has-text('اعتماد')`).click();
+    await p.waitForSelector("text=اعتُمدت");
   },
 });
 

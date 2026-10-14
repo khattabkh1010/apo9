@@ -15,7 +15,6 @@ export const STAFF_ROLES = new Set(["ops_agent", "ops_manager", "finance", "admi
 
 const OTP_TTL_MS = 5 * 60_000;
 const OTP_MAX_ATTEMPTS = 5;
-const OTP_MAX_PER_HOUR = 5;
 
 const hashOtp = (phone: string, code: string) => createHmac("sha256", config.otpSecret).update(`${phone}:${code}`).digest("hex");
 const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
@@ -65,7 +64,7 @@ export function identityRoutes(r: Router, app: AppContext) {
     const e164 = normalizeSaudiMobile(phone);
     if (!e164) throw badRequest("invalid_phone", "رقم جوال سعودي غير صحيح");
     const recent = await app.db.query<{ n: number }>("select count(*)::int n from otp_challenges where phone = $1 and created_at > now() - interval '1 hour'", [e164]);
-    if (recent.rows[0]!.n >= OTP_MAX_PER_HOUR) throw new ApiError(429, "too_many_requests", "حاول مرة أخرى لاحقاً");
+    if (recent.rows[0]!.n >= config.otpMaxPerHour) throw new ApiError(429, "too_many_requests", "حاول مرة أخرى لاحقاً");
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     const row = await app.db.query<{ id: string }>("insert into otp_challenges(phone, code_hash, expires_at) values ($1,$2,$3) returning id", [e164, hashOtp(e164, code), new Date(Date.now() + OTP_TTL_MS)]);
     await app.sms.send(e164, `رمز الدخول إلى أبو9: ${code}\nلا تشاركه مع أحد.`);

@@ -2981,39 +2981,6 @@
         }
       }
     },
-    "/api/v1/admin/creator-campaigns/{id}/approve": {
-      "post": {
-        "tags": [
-          "Admin & Operations"
-        ],
-        "operationId": "POST_api_v1_admin_creator_campaigns_id_approve",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "4XX": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/admin/creator-enrollments/{campaignId}/{creatorId}/approve": {
       "post": {
         "tags": [
@@ -5058,6 +5025,223 @@
           "Admin & Operations"
         ],
         "operationId": "POST_api_v1_admin_restaurants_id_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/restaurant/{rid}/creator-campaigns": {
+      "get": {
+        "tags": [
+          "Restaurant Portal"
+        ],
+        "operationId": "GET_api_v1_restaurant_rid_creator_campaigns",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Restaurant Portal"
+        ],
+        "operationId": "POST_api_v1_restaurant_rid_creator_campaigns",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/restaurant/{rid}/creator-campaigns/{cid}/status": {
+      "post": {
+        "tags": [
+          "Restaurant Portal"
+        ],
+        "operationId": "POST_api_v1_restaurant_rid_creator_campaigns_cid_status",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/creator-campaigns": {
+      "post": {
+        "tags": [
+          "Admin & Operations"
+        ],
+        "operationId": "POST_api_v1_admin_creator_campaigns",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Admin & Operations"
+        ],
+        "operationId": "GET_api_v1_admin_creator_campaigns",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/creator-campaigns/{id}/approve": {
+      "post": {
+        "tags": [
+          "Admin & Operations"
+        ],
+        "operationId": "POST_api_v1_admin_creator_campaigns_id_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/creator-campaigns/{id}/status": {
+      "post": {
+        "tags": [
+          "Admin & Operations"
+        ],
+        "operationId": "POST_api_v1_admin_creator_campaigns_id_status",
         "parameters": [
           {
             "name": "id",

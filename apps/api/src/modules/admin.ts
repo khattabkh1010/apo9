@@ -257,13 +257,7 @@ export function adminRoutes(r: Router, app: AppContext) {
     await audit(app.db, ctx, { action: `creator.${status}`, entityType: "creator", entityId: ctx.params.id! });
     return { ok: true };
   });
-  r.post("/api/v1/admin/creator-campaigns/:id/approve", async (ctx) => {
-    const p = requirePermission(ctx, "promotions.approve");
-    const r2 = await app.db.query("update creator_campaigns set status = 'active', approved_by = $2 where id = $1 and status = 'pending_approval' returning *", [ctx.params.id, p.userId]);
-    if (!r2.rowCount) throw conflict("not_pending");
-    await audit(app.db, ctx, { action: "creator_campaign.approve", entityType: "creator_campaign", entityId: ctx.params.id!, after: r2.rows[0] });
-    return { ok: true };
-  });
+  // Campaign approval lives in modules/campaigns.ts (four-eyes).
   r.post("/api/v1/admin/creator-enrollments/:campaignId/:creatorId/approve", async (ctx) => {
     requirePermission(ctx, "promotions.approve");
     const r2 = await app.db.query("update creator_campaign_enrollments set status = 'approved' where campaign_id = $1 and creator_id = $2 and status = 'opted_in'", [ctx.params.campaignId, ctx.params.creatorId]);

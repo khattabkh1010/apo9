@@ -1,4 +1,5 @@
 import type { Queryable } from "../../../../packages/db/src/pg.ts";
+import { incentiveFor, type IncentiveType } from "../../../../packages/domain/src/creators.ts";
 import { DEFAULT_BATCHING, type BatchingConfig, type CourierCandidate, type DispatchJob, type DispatchDecision, type ActiveLeg } from "../../../../packages/domain/src/dispatch.ts";
 import { haversineKm } from "../../../../packages/domain/src/geo.ts";
 import { assertJobTransition, type DeliveryJobStatus } from "../../../../packages/domain/src/order-state.ts";
@@ -229,11 +230,13 @@ async function onDelivered(app: AppContext, q: Queryable, jobId: string): Promis
   if (attr?.creator_id) {
     const camp = (await q.query<{ id: string; incentive_type: string; incentive_value: number }>(
       `select c.* from creator_campaigns c join creator_campaign_enrollments e on e.campaign_id = c.id and e.creator_id = $1 and e.status = 'approved'
-       where c.status = 'active' and (c.restaurant_id is null or c.restaurant_id = $2) and (c.ends_at is null or c.ends_at > now()) limit 1`,
+       where c.status = 'active' and (c.restaurant_id is null or c.restaurant_id = $2)
+         and (c.starts_at is null or c.starts_at <= now()) and (c.ends_at is null or c.ends_at > now())
+       order by c.created_at limit 1`,
       [attr.creator_id, o.restaurant_id],
     )).rows[0];
     if (camp && camp.incentive_type !== "none") {
-      const amount = camp.incentive_type === "fixed_per_order" ? camp.incentive_value : Math.floor((o.pricing.foodNet * camp.incentive_value) / 10_000);
+      const amount = incentiveFor(camp.incentive_type as IncentiveType, camp.incentive_value, o.pricing.foodNet);
       const flags: string[] = [];
       const self = (await q.query<{ n: number }>("select count(*)::int n from creators where id = $1 and user_id = $2", [attr.creator_id, o.customer_id])).rows[0]!.n;
       if (self) flags.push("self_referral");
