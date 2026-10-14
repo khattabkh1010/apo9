@@ -27,6 +27,35 @@ jobs:
       - run: npm run build:web
       - run: npm run openapi && git diff --exit-code docs/api/openapi.json
 
+  web-smoke:
+    # Drives all six web apps in headless Chromium against a seeded API (scripts/smoke-web.mjs).
+    runs-on: ubuntu-latest
+    needs: test
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: abu9, POSTGRES_PASSWORD: abu9_dev, POSTGRES_DB: abu9 }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abu9" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://abu9:abu9_dev@127.0.0.1:5432/abu9
+      RATE_LIMIT: "0"
+      OTP_MAX_PER_HOUR: "1000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm ci --no-audit --no-fund
+      - run: npm run db:reset && npm run build:web
+      - run: npm install --no-save --no-audit --no-fund playwright@1.56.1 && npx playwright install --with-deps chromium
+      - run: |
+          node apps/api/src/main.ts > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8080/healthz && break; sleep 1; done
+          node scripts/smoke-web.mjs
+      - if: failure()
+        run: tail -100 api.log
+
   docker:
     runs-on: ubuntu-latest
     needs: test

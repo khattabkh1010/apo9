@@ -1,12 +1,14 @@
 # ABU9 API + web apps (single image; the API serves the built web apps and media).
-FROM node:22-alpine AS build
+# NODE_IMAGE can point at a registry mirror (e.g. mirror.gcr.io/library/node:22-alpine) to avoid Docker Hub limits.
+ARG NODE_IMAGE=node:22-alpine
+FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
-RUN npm run typecheck && node apps/web/build.ts
+RUN npm run typecheck && node apps/web/build.ts && npm prune --omit=dev --no-audit --no-fund
 
-FROM node:22-alpine
+FROM ${NODE_IMAGE}
 ENV NODE_ENV=production PORT=8080
 WORKDIR /app
 RUN addgroup -S abu9 && adduser -S abu9 -G abu9

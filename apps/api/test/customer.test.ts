@@ -97,3 +97,18 @@ test("notifications: order events notify the customer; marking read", async () =
   await host.post("/api/v1/me/notifications/read");
   assert.ok((await host.get("/api/v1/me/notifications")).body.notifications.every((x: any) => x.read_at));
 });
+
+test("dev courier simulator: keeps demo couriers alive and moves them toward their job", async () => {
+  const { COURIER_SIMULATOR } = await import("../src/jobs.ts");
+  await s.db.query("update couriers set last_seen_at = now() - interval '30 minutes'");
+  const busy = (await s.db.query<{ id: string; last_lat: number; last_lng: number }>(
+    "select c.id, c.last_lat, c.last_lng from couriers c join delivery_jobs j on j.courier_id = c.id where j.status in ('assigned','at_pickup','picked_up','at_dropoff') limit 1",
+  )).rows[0];
+  await COURIER_SIMULATOR.run(s.app);
+  const stale = (await s.db.query<{ n: number }>("select count(*)::int n from couriers c join logistics_companies lc on lc.id = c.company_id where lc.is_demo and c.status = 'online' and c.last_seen_at < now() - interval '1 minute'")).rows[0]!.n;
+  assert.equal(stale, 0);
+  if (busy) {
+    const after = (await s.db.query<{ last_lat: number; last_lng: number }>("select last_lat, last_lng from couriers where id = $1", [busy.id])).rows[0]!;
+    assert.ok(after.last_lat !== busy.last_lat || after.last_lng !== busy.last_lng, "busy courier moved");
+  }
+});

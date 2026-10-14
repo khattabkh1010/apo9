@@ -7,6 +7,8 @@ import { getSetting } from "./services/common.ts";
 import { evaluatePlanAtCycleClose, RESTAURANT_PLANS, addInterval } from "../../../packages/domain/src/subscriptions.ts";
 import { postRestaurantSubscriptionInvoice } from "../../../packages/domain/src/ledger.ts";
 import { postEntry, notify } from "./services/common.ts";
+import { recordCourierLocation } from "./services/dispatch.ts";
+import { config } from "./config.ts";
 
 /**
  * Background jobs (in-process scheduler). Each job takes a Postgres advisory lock so that with
@@ -103,9 +105,48 @@ export const JOBS: Job[] = [
   },
 ];
 
+/**
+ * DEVELOPMENT ONLY (SIMULATE_COURIERS, never in production): keeps FICTIONAL couriers of demo
+ * logistics companies alive — heartbeat while idle, and movement toward the pickup/drop-off while
+ * on a job so live tracking can be demonstrated. It never confirms pickup or delivery: those still
+ * need the courier app and the handover codes.
+ */
+export const COURIER_SIMULATOR: Job = {
+  name: "dev_courier_simulator",
+  everyMs: 15_000,
+  async run(app) {
+    const rows = (await app.db.query<{ id: string; last_lat: number; last_lng: number; target_lat: number | null; target_lng: number | null }>(
+      `select c.id, c.last_lat, c.last_lng,
+              (select case when j.status in ('assigned','at_pickup') then b.lat else o.dropoff_lat end from delivery_jobs j join orders o on o.id = j.order_id join branches b on b.id = o.branch_id
+                 where j.courier_id = c.id and j.status in ('assigned','at_pickup','picked_up','at_dropoff') order by j.created_at limit 1) target_lat,
+              (select case when j.status in ('assigned','at_pickup') then b.lng else o.dropoff_lng end from delivery_jobs j join orders o on o.id = j.order_id join branches b on b.id = o.branch_id
+                 where j.courier_id = c.id and j.status in ('assigned','at_pickup','picked_up','at_dropoff') order by j.created_at limit 1) target_lng
+       from couriers c join logistics_companies lc on lc.id = c.company_id
+       where lc.is_demo and c.status = 'online' and c.last_lat is not null`,
+    )).rows;
+    let moved = 0;
+    for (const c of rows) {
+      if (c.target_lat === null || c.target_lng === null) {
+        await app.db.query("update couriers set last_seen_at = now() where id = $1", [c.id]);
+        continue;
+      }
+      // ~350 m per tick (≈ 25 km/h), stopping at the target.
+      const dLat = c.target_lat - c.last_lat;
+      const dLng = c.target_lng - c.last_lng;
+      const dist = Math.hypot(dLat, dLng);
+      const step = Math.min(1, 0.0032 / Math.max(dist, 1e-9));
+      await recordCourierLocation(app, c.id, c.last_lat + dLat * step, c.last_lng + dLng * step);
+      moved++;
+    }
+    return { couriers: rows.length, moved };
+  },
+};
+
 export function startJobs(app: AppContext): () => void {
   const timers: NodeJS.Timeout[] = [];
-  JOBS.forEach((job, i) => {
+  const jobs = config.simulateCouriers ? [...JOBS, COURIER_SIMULATOR] : JOBS;
+  if (config.simulateCouriers) log.warn("dev_courier_simulator_enabled", { note: "fictional demo couriers only; never in production" });
+  jobs.forEach((job, i) => {
     let running = false;
     const tick = async () => {
       if (running) return;

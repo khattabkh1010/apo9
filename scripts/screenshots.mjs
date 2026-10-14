@@ -1,9 +1,10 @@
 // Captures real screenshots of the running apps (requires a running API on BASE and a seeded DB).
 // Usage: node scripts/screenshots.mjs [outDir]
 import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import { mkdirSync } from "node:fs";
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.PLAYWRIGHT_PATH ?? "/opt/node-tools/node_modules/playwright");
+const { chromium } = require(process.env.PLAYWRIGHT_PATH ?? (existsSync("/opt/node-tools/node_modules/playwright") ? "/opt/node-tools/node_modules/playwright" : "playwright"));
 
 const BASE = process.env.BASE ?? "http://127.0.0.1:8080";
 const OUT = process.argv[2] ?? "docs/screenshots";
@@ -31,7 +32,8 @@ const api = (sess) => async (method, path, body, headers = {}) => {
   return t ? JSON.parse(t) : null;
 };
 
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? "/opt/pw-browsers/chromium" });
+const chrome = process.env.CHROME ?? "/opt/pw-browsers/chromium";
+const browser = await chromium.launch(existsSync(chrome) ? { executablePath: chrome } : {});
 async function shot(name, url, token, { mobile = false, wait = 900, before } = {}) {
   const ctx = await browser.newContext(mobile ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true } : { viewport: { width: 1360, height: 900 }, deviceScaleFactor: 1 });
   if (token) {

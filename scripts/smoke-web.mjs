@@ -4,11 +4,13 @@
 // Usage: node scripts/smoke-web.mjs   (BASE=http://127.0.0.1:8080, PLAYWRIGHT_PATH, CHROME overridable)
 // The run logs in ~15 times: start the API with RATE_LIMIT=0 OTP_MAX_PER_HOUR=1000 for repeated local runs.
 import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.PLAYWRIGHT_PATH ?? "/opt/node-tools/node_modules/playwright");
+const { chromium } = require(process.env.PLAYWRIGHT_PATH ?? (existsSync("/opt/node-tools/node_modules/playwright") ? "/opt/node-tools/node_modules/playwright" : "playwright"));
 
 const BASE = process.env.BASE ?? "http://127.0.0.1:8080";
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? "/opt/pw-browsers/chromium" });
+const chrome = process.env.CHROME ?? "/opt/pw-browsers/chromium";
+const browser = await chromium.launch(existsSync(chrome) ? { executablePath: chrome } : {});
 let failed = 0;
 
 async function check(name, { path, phone, mobile = false, staff = false, expect, extra }) {

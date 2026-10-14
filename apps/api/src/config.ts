@@ -39,8 +39,8 @@ export const config = {
   /** Bearer token for GET /metrics. Required in production (otherwise the endpoint is disabled). */
   metricsToken: env.METRICS_TOKEN ?? null,
   jobsEnabled: env.JOBS_ENABLED !== "0",
-  /** Demo courier movement simulator (development only). */
-  simulateCouriers: !isProd && env.SIMULATE_COURIERS === "1",
+  /** Demo courier heartbeat/movement simulator (development only; on by default in dev, SIMULATE_COURIERS=0 disables). */
+  simulateCouriers: !isProd && env.SIMULATE_COURIERS !== "0",
   webDist: env.WEB_DIST ?? new URL("../../web/dist", import.meta.url).pathname,
   mediaDir: env.MEDIA_DIR ?? new URL("../storage/media", import.meta.url).pathname,
 };
