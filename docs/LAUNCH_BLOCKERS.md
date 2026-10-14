@@ -50,7 +50,7 @@ Honest status as of this build. Nothing here is a live licensed integration.
 - Observability: structured JSON logs + request IDs only — no metrics/tracing/alerting yet.
 - Accessibility: keyboard focus, labels, reduced motion done; no formal WCAG audit or screen-reader pass.
 - `@types/react` was unavailable offline, so **TSX files are bundled but not type-checked** (`npm run typecheck` covers domain/db/API). Add `@types/react` and include `apps/web` in tsconfig.
-- Docker image and CI workflow are written but **were not executed** here (no Docker daemon/registry in the sandbox). No `package-lock.json` yet.
+- Docker image and CI workflow are written but **were not executed** here (no Docker daemon/registry in the sandbox). `package-lock.json` is committed; Docker and CI use `npm ci`.
 
 ## E. Operational readiness gaps
 On-call/runbooks, backup & restore drill, load test of dispatch at peak (Thursday/Friday nights, Ramadan iftar/suhoor), courier-app offline behaviour, ops staffing for the 240-second acceptance window.
