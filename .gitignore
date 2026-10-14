@@ -5,3 +5,4 @@ apps/web/dist/
 .env.*
 !.env.example
 *.log
+apps/api/storage/
