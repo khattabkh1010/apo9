@@ -27,7 +27,7 @@ function App() {
 
   const tab = head === "r" ? "restaurants" : head === "o" ? "orders" : head === "plus" ? "account" : head;
   const dark = head === "feed" || !head;
-  const tabs: Array<[string, string, () => JSX.Element]> = [
+  const tabs: Array<[string, string, (typeof Icon)[keyof typeof Icon]]> = [
     ["feed", t("اكتشف"), Icon.play],
     ["restaurants", t("المطاعم"), Icon.store],
     ["cart", t("السلة"), Icon.bag],

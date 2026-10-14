@@ -14,7 +14,7 @@ function App() {
   const [route] = useHashRoute("overview");
   if (!authed) return (<><OtpLogin dark title={<span style={{ fontSize: 36 }}><Brand suffix="مركز العمليات" /></span>} subtitle="للموظفين المصرّح لهم فقط. كل إجراء حساس يُسجّل." demoPhones={DEMOS} /><ToastHost /></>);
   const [head, arg] = route.split("/");
-  const pages: Record<string, JSX.Element> = {
+  const pages: Record<string, React.JSX.Element> = {
     overview: <Overview />, orders: arg ? <OrderDetail id={arg} /> : <Orders />, dispatch: <Dispatch />, support: <Support />, content: <ContentPage />,
     finance: <Finance />, settlements: <Settlements />, growth: <Growth />, config: <Config />, partners: <Partners />, audit: <Audit />,
   };

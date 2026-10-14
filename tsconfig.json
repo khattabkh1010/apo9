@@ -11,6 +11,7 @@
     "types": [
       "node"
     ],
+    "jsx": "react-jsx",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -27,9 +28,8 @@
     "packages/*/test/**/*.ts",
     "apps/*/src/**/*.ts",
     "apps/*/test/**/*.ts",
-    "apps/*/*.ts"
-  ],
-  "exclude": [
-    "apps/web/src/**"
+    "apps/*/*.ts",
+    "apps/web/src/**/*.ts",
+    "apps/web/src/**/*.tsx"
   ]
 }
