@@ -1,0 +1,22 @@
+{
+  "name": "abu9",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ABU9 (أبو9) — Saudi food discovery, ordering and delivery platform. Monorepo.",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --test-reporter=spec \"packages/*/test/*.test.ts\" \"apps/*/test/*.test.ts\"",
+    "test:unit": "node --test --test-reporter=spec \"packages/domain/test/*.test.ts\"",
+    "db:migrate": "node packages/db/src/migrate.ts",
+    "db:seed": "node packages/db/src/seed.ts",
+    "db:reset": "node packages/db/src/migrate.ts --reset && node packages/db/src/seed.ts",
+    "build:web": "node apps/web/build.ts",
+    "openapi": "node apps/api/src/openapi/write.ts",
+    "dev": "node apps/web/build.ts && node --watch apps/api/src/main.ts",
+    "start": "node apps/api/src/main.ts",
+    "e2e": "node apps/api/test/e2e-flow.ts"
+  }
+}
