@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg   # demo media for seed (optional)
-      - run: npm install --no-audit --no-fund                         # switch to `npm ci` once a lockfile is committed
+      - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
       - run: npm run build:web
