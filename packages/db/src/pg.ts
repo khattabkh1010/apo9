@@ -202,7 +202,7 @@ interface Pending {
 
 export class PgConnection implements Queryable {
   private socket!: net.Socket;
-  private buf = Buffer.alloc(0);
+  private buf: Buffer = Buffer.alloc(0);
   private queue: Pending[] = [];
   private chain: Promise<unknown> = Promise.resolve();
   private readyResolve: (() => void) | null = null;
@@ -233,7 +233,7 @@ export class PgConnection implements Queryable {
         ]);
         this.socket.write(Buffer.concat([int32(params.length + 4), params]));
       });
-      this.socket.on("data", (d) => this.onData(d));
+      this.socket.on("data", (d: Buffer) => this.onData(d));
       this.socket.on("error", (e) => this.fail(e));
       this.socket.on("close", () => {
         this.closed = true;
